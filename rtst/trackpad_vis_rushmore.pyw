@@ -61,10 +61,16 @@ class TrackpadVis():
         self.root = root
         self.cntrlr_mgr = cntrlr_mgr
         self.args = args
-   
-        self.num_x = 8
-        self.num_y = 8     
-        self.num_pads = 2
+
+        self.trackpad = 1  # right
+
+        self.last_packet_num = 0
+        self.middle_out = 4 #eights
+
+        self.rank =  8
+        self.num_x = self.rank
+        self.num_y = self.rank    
+        self.num_pads = 1
 
         # Params to tune tracking algos.
         self.min_cell_z_value = 25
@@ -290,7 +296,7 @@ class TrackpadVis():
         for i in range(len(self.grid_boxes[pad_num])):
             box = self.grid_boxes[pad_num][i]
           
-            val = raw_x_values[int( i/ 8)] * raw_y_values[i%8]
+            val = raw_x_values[int( i/ self.rank)] * raw_y_values[i % self.rank]
             self.canvas[pad_num].itemconfig(box, fill=get_color(val*40))
 
     def rescale_value(self, val, min_val, max_val):
@@ -555,41 +561,45 @@ class TrackpadVis():
     ############################################################################################################
     def tick( self ):
         if self.cntrlr_mgr.is_open(): 
-    #        for pad_num in range(self.num_pads):
-            for pad_num in range(1):
+            for pad_num in range(self.num_pads):
                 device_data = self.cntrlr_mgr.get_data()
 
                 if not ('pad_raw_0') in device_data:
                     continue
 
-                # Values come in reversed.
-                raw_x_values = np.array( [device_data['pad_raw_%d' % (i)] for i in range(7,  -1, -1)],  dtype=np.float32)
-                raw_y_values = np.array( [device_data['pad_raw_%d' % (i)] for i in range(15, 7, -1)],  dtype=np.float32)
+                # Values .
+                raw_x_values = np.array( [device_data['pad_raw_%d' % (i)] for i in range(0,  self.rank, 1)],  dtype=np.float32)
+                raw_y_values = np.array( [device_data['pad_raw_%d' % (i)] for i in range(self.rank, 2 *self.rank, 1)],  dtype=np.float32)
 
                 if self.logfile:
-                    self.logfile.write( 'raw_vals, ' )
-            
-                    for val in raw_x_values:
-                        self.logfile.write( '{0}, '.format( val ) )  
-                    for val in raw_y_values:
-                        self.logfile.write( '{0}, '.format( val ) )
+                    packet_num = device_data['last_packet_num']
+                    if packet_num != self.last_packet_num:
+    #                   self.logfile.write( 'raw_vals, ' )
+                        self.logfile.write( '{0}, '.format(device_data['last_packet_num']) )
+                        for val in raw_x_values:
+                            self.logfile.write( '{0}, '.format( val ) )  
+                        for val in raw_y_values:
+                            self.logfile.write( '{0}, '.format( val ) )
 
-                    self.logfile.write('\n')
+                        self.logfile.write('\n')
+                    self.last_packet_num = packet_num
+                    self.tick_job = self.root.after( self.args.tick, self.tick )        
+                    return
 
                 avg_x = np.sum(raw_x_values) / self.num_x
                 avg_y = np.sum(raw_y_values) / self.num_y
 
-                raw_x_values = np.subtract(raw_x_values, avg_x * 3 / 4 )
-                raw_y_values = np.subtract(raw_y_values, avg_y * 3 / 4 )
+                raw_x_values = np.subtract(raw_x_values, avg_x * self.middle_out / 8 )
+                raw_y_values = np.subtract(raw_y_values, avg_y * self.middle_out / 8 )
 
-                centroid_threshold = 11
+                centroid_threshold = 11 
 
                 raw_x_values[raw_x_values < centroid_threshold] = 0
                 raw_y_values[raw_y_values < centroid_threshold] = 0
 
-                for i in range(0, 8, 1):
-                    raw_x_values[i] = (7 * self.last_x_vals[i] + raw_x_values[i]) / 8
-                    raw_y_values[i] = (7 * self.last_y_vals[i] + raw_y_values[i]) / 8
+                for i in range(0, self.rank, 1):
+                    raw_x_values[i] = ((self.rank - 1) * self.last_x_vals[i] + raw_x_values[i]) / self.rank
+                    raw_y_values[i] = ((self.rank - 1) * self.last_y_vals[i] + raw_y_values[i]) / self.rank
 
                     self.last_x_vals[i] = raw_x_values[i];
                     self.last_y_vals[i] = raw_y_values[i];
@@ -598,9 +608,7 @@ class TrackpadVis():
                 self.x_vals = raw_x_values * 256
                 self.y_vals = raw_y_values * 256
 
-            #   1 = right, 0 = left, but we're doing only right
-                pad_num = 1 - pad_num
-
+   
                 self.compute_total_mag(pad_num)
                 self.compute_pos(pad_num)
                 self.compute_finger_down(pad_num, raw_x_values, raw_y_values)
@@ -632,11 +640,19 @@ def key_cb( event ):
         for l in vioos.prev_raw_values:
             del l[:]
     elif event.char == 'a':
-        cntrlr_mgr.calibrate_trackpads()
+        cntrlr_mgr.capsense_calibrate_trackpad(0)
+        cntrlr_mgr.capsense_calibrate_trackpad(1)
+    elif event.char == 'o':
+        vioos.middle_out = vioos.middle_out + 1
+        if vioos.middle_out >= 8:
+            vioos.middle_out = 0
     elif event.char == 'l':
         vioos.set_logging_state(not vioos.get_logging_state())
     elif event.char == 'r':
         cntrlr_mgr.restart()
+    elif event.char == 's':
+        vioos.trackpad = 1 - vioos.trackpad
+        cntrlr_mgr.trackpad_set_raw_data_mode(1 << vioos.trackpad )
     elif event.char == 'q':
         root.destroy()
 
@@ -652,7 +668,7 @@ def connect_cb(hid_dev_mgr):
     cntrlr_mgr.sys_set_framerate(12)
 
     # Enable right trackpad data
-    cntrlr_mgr.trackpad_set_raw_data_mode(0x2)
+    cntrlr_mgr.trackpad_set_raw_data_mode(2)
 
     # Enable status messages
     cntrlr_mgr.set_setting(49, 2)	
@@ -710,8 +726,8 @@ root.wm_title("Valve Test")
 parser = argparse.ArgumentParser(description='Valve Controller Trackpad Visualizer')
 parser.add_argument('-m', '--mode', type=int, default=0,
                     help='The mode to execute (Default: 0)')
-parser.add_argument('-t', '--tick', type=int, default=6,
-                    help='The tick rate in ms (Default: 6)')
+parser.add_argument('-t', '--tick', type=int, default=1,
+                    help='The tick rate in ms (Default: 1)')
 parser.add_argument('-v', '--verbose', action='store_true', default=False,
                     help='Log debug information to console')
 args = parser.parse_args()

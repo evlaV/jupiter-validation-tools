@@ -8,10 +8,8 @@ import os
 import sys
 import logging
 
-logger = logging.getLogger('RTST.HID')
-
-__version__ = "$Revision: #18 $"
-__date__ = "$DateTime: 2020/10/01 10:17:12 $"
+__version__ = "$Revision: #20 $"
+__date__ = "$DateTime: 2020/10/30 11:48:45 $"
 
 class HidDeviceManager:
 	def __init__(self, vid_pid_endpoint_list, connect_cb, msg_handler=None, dev_num=1):

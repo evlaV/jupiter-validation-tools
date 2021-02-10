@@ -2,9 +2,10 @@ import tkinter as Tk
 import time
 import logging
 import gzip
+from loc_strings import loc_strings
 
-__version__ = "$Revision: #23 $"
-__date__ = "$DateTime: 2020/11/10 12:28:34 $"
+__version__ = "$Revision: #27 $"
+__date__ = "$DateTime: 2021/02/08 09:42:51 $"
 
 highlight = False
 color_pallete = []
@@ -45,13 +46,14 @@ button_masks = {
 
 ui_scale = 2
 ui_fonts = {
-    "vlt_data":   ('Arial', str(4 * ui_scale)),
-    "vlt_label":  ('Arial', str(4 * ui_scale)),
-    "xyp_label":  ('Arial', str(4 * ui_scale)),
-    "xyp_header": ('Arial', str(5 * ui_scale), 'bold'),
-    "bg_header":  ('Arial', str(5 * ui_scale), 'bold'),
-    "twl_label":  ('Arial', str(4 * ui_scale)),
-    "twl_text":   ('Arial', str(4 * ui_scale)),
+    "vlt_data":     ('Arial', str(4 * ui_scale)),
+    "vlt_label":    ('Arial', str(4 * ui_scale)),
+    "xyp_label":    ('Arial', str(4 * ui_scale)),
+    "xyp_header":   ('Arial', str(5 * ui_scale), 'bold'),
+    "bg_header":    ('Arial', str(5 * ui_scale), 'bold'),
+    "twl_label":    ('Arial', str(4 * ui_scale)),
+    "twl_text":     ('Arial', str(4 * ui_scale)),
+    "chinese_test": ('Song',  str(4 * ui_scale)),
 }
 
 ui_dimensions = {
@@ -91,19 +93,24 @@ ui_dimensions = {
 
 
 class UIRoot:
-    def __init__(self, cntrlr_mgr, root, canvas, colors):
+    def get_loc_str(self, txt):
+        return loc_strings[self.language][txt]
+
+    def __init__(self, cntrlr_mgr, root, canvas, colors, language):
         self.logger = logging.getLogger('RTST.UI')
         self.logger.info('init')
 
         global color_pallete
         color_pallete = colors
 
+        self.language = language
+
         # We have 9ms frames, but need at least 3-4ms buffer to ensure that the USB
         # data is actually present
         # when the interval fires off.
         # Legacy: self.tick_interval_ms = 9 - 4
 
-        self.tick_interval_ms = 4
+        self.tick_interval_ms = 1
         self.dev_num = 1
         self.current_ep = 0
 
@@ -122,42 +129,17 @@ class UIRoot:
         self.right_groups = []
         self.far_right_groups = []
         self.ass_end_groups = []
-
-        device_control_group = {
-            "title" : "Device Control",
-            "type" : "LinesWithLabels",
-            "labels" : (
-                'Device Number',
-                'Logging Enabled',
-                'Log Compression',
-                'Debug Mode'
-            ),
-            "ranges" :	None,
-            "trigger_limits" : None,
-            "data_xform_funcs" : (
-                (lambda x: self.dev_num),
-                (lambda x: self.get_logging_state()),
-                (lambda x: self.log_compression),
-                (lambda x: self.debug_mode),
-            ),
-            "data_fields" : (
-                None,
-                None,
-                None,
-                None,
-            )
-        }
     
         main_device_group = {
-            "title" : "Main Device",
+            "title" : self.get_loc_str('Main Device'),
             "type" : "TextWithLabels",
             "labels" : (
-                'Board HW ID',
-                'Board Serial',
-                'App Build Timestamp',
-                'App Build Date',
-                'BL Build Timestamp',
-                'BL Build Date',
+                self.get_loc_str('Board HW ID'),
+                self.get_loc_str('Board Serial'),
+                self.get_loc_str('App Build Timestamp'),
+                self.get_loc_str('App Build Date'),
+                self.get_loc_str('BL Build Timestamp'),
+                self.get_loc_str('BL Build Date'),
             ),
             "ranges" : None,
             "trigger_limits" : None,
@@ -180,15 +162,16 @@ class UIRoot:
         }
         
         secondary_device_group = {
-            "title" : "Secondary Device",
+            "title" : self.get_loc_str('Secondary Device'),
             "type" : "TextWithLabels",
             "labels" : (
-                'Board HW ID',
-                'Board Serial',
-                'App Build Timestamp',
-                'App Build Date',
-                'BL Build Timestamp',
-                'BL Build Date'),
+                self.get_loc_str('Board HW ID'),
+                self.get_loc_str('Board Serial'),
+                self.get_loc_str('App Build Timestamp'),
+                self.get_loc_str('App Build Date'),
+                self.get_loc_str('BL Build Timestamp'),
+                self.get_loc_str('BL Build Date'),
+            ),
             "ranges" : None,
             "trigger_limits" : None,
             "data_xform_funcs" : (
@@ -210,13 +193,13 @@ class UIRoot:
         }
 
         status_group = {
-            "title" : "Status",
+            "title" : self.get_loc_str('Status'),
             "type" : "LinesWithLabels",
             "labels" : (
-                'Packet Number',
-                'Missed Packets',
-                'Avg. Missed/s',
-                'Frame Rate',
+                self.get_loc_str('Packet Number'),
+                self.get_loc_str('Missed Packets'),
+                self.get_loc_str('Avg. Missed/s'),
+                self.get_loc_str('Frame Rate'),
             ),
             "ranges" : (
                 (0, 256),
@@ -253,19 +236,24 @@ class UIRoot:
         ##########################################################################################################################################
 
         trackpad_data_group = {
-            "title" : "Trackpad",
+            "title" : self.get_loc_str('Trackpad'),
             "type" : "LinesWithLabels",
             "labels" : (
-                'X Left',
-                'Y Left',
-                'X Right',
-                'Y Right',
-                'Pressure Left',
-                'Pressure Right',
-                'Finger Present L',
-                'Finger Present R',
-                'Click Left',
-                'Click Right',
+                self.get_loc_str('X Left'),
+                self.get_loc_str('Y Left'),
+                self.get_loc_str('X Right'),
+                self.get_loc_str('Y Right'),
+                self.get_loc_str('Pressure Left'),
+                self.get_loc_str('Pressure Right'),
+                self.get_loc_str('Finger Present L'),
+                self.get_loc_str('Finger Present R'),
+                self.get_loc_str('Click Left'),
+                self.get_loc_str('Click Right'),
+                "Left  X STDEV",
+                "Left  Y STDEV",
+                "Right X STDEV",
+                "Right Y STDEV",
+
             ),
             "ranges" : (
                 (-32767, 32767),
@@ -278,6 +266,10 @@ class UIRoot:
                 (0, 1),
                 (0, 1),
                 (0, 1),
+                (0, 150),
+                (0, 150),
+                (0, 150),
+                (0, 150),
             ),
             "trigger_limits" : (
                 (.1, .9),
@@ -286,6 +278,10 @@ class UIRoot:
                 (.1, .9),
                 (0, .9),
                 (0, .9),
+                (0, 1),
+                (0, 1),
+                (0, 1),
+                (0, 1),
                 (0, 1),
                 (0, 1),
                 (0, 1),
@@ -302,6 +298,10 @@ class UIRoot:
                 (lambda x: 1 if (x & button_masks['finger_present_right']) > 0 else 0),
                 (lambda x: 1 if (x & button_masks['padclick_left']) > 0 else 0),
                 (lambda x: 1 if (x & button_masks['padclick_right']) > 0 else 0),
+                None,
+                None,
+                None,
+                None,
             ),
             "data_fields" : (
                 'left_x',
@@ -314,13 +314,19 @@ class UIRoot:
                 'buttons_0',
                 'buttons_0',
                 'buttons_0',
-            )
+                'l_x_stdev',
+                'l_y_stdev',
+                'r_x_stdev',
+                'r_y_stdev',            )
         }    
 
         trackpad_plot_group = {
-            "title" : "Trackpad Plots",
+            "title" : self.get_loc_str('Trackpad Plots'),
             "type" : "XYPlotsWithTrails",
-            "labels" : ('Left', 'Right',),
+            "labels" : (
+                self.get_loc_str('Left'), 
+                self.get_loc_str('Right'),
+            ),
             "ranges" : (
                 (-32767, 32767),
                 (-32767, 32767),
@@ -355,19 +361,19 @@ class UIRoot:
         ## Middle Group
         ##########################################################################################################################################
         thumbstick_data_group = {
-            "title" : "Thumbsticks",
+            "title" : self.get_loc_str('Thumbsticks'),
             "type" : "LinesWithLabels",
             "labels" : (
-                'L Stick X',
-                'L Stick Y',
-                'R Stick X',
-                'R Stick Y',
-                'L Stick Raw',
-                'L Stick Touch',
-                'L Stick Click',
-                'R Stick Raw',
-                'R Stick Touch',
-                'R Stick Click',
+                self.get_loc_str('L Stick X'),
+                self.get_loc_str('L Stick Y'),
+                self.get_loc_str('R Stick X'),
+                self.get_loc_str('R Stick Y'),
+                self.get_loc_str('L Stick Raw'),
+                self.get_loc_str('L Stick Touch'),
+                self.get_loc_str('L Stick Click'),
+                self.get_loc_str('R Stick Raw'),
+                self.get_loc_str('R Stick Touch'),
+                self.get_loc_str('R Stick Click'),
             ),
             "ranges" : (
                 (-32767, 32767),
@@ -420,9 +426,12 @@ class UIRoot:
         }
 
         thumbstick_plot_group = {
-            "title" : "Thumbstick Plots",
+            "title" : self.get_loc_str('Thumbstick Plots'),
             "type" : "XYPlotsWithTrails",
-            "labels" : ('Left', 'Right',),
+            "labels" : (
+                self.get_loc_str('Left'),
+                self.get_loc_str('Right'),
+            ),
             "ranges" : (
                 (-32767, 32767),
                 (-32767, 32767),
@@ -451,16 +460,16 @@ class UIRoot:
         }
 
         analog_trigger_group = {
-            "title" : "Analog Triggers",
+            "title" : self.get_loc_str('Analog Triggers'),
             "type" : "LinesWithLabels",
             "labels" : (
-                'trigger raw_left',
-                'trigger left button',
-                'trigger raw_right',
-                'trigger right button',
-                'trigger threshold',
-                'bumper left button',
-                'bumper right button',
+                self.get_loc_str('trigger raw_left'),
+                self.get_loc_str('trigger left button'),
+                self.get_loc_str('trigger raw_right'),
+                self.get_loc_str('trigger right button'),
+                self.get_loc_str('trigger threshold'),
+                self.get_loc_str('bumper left button'),
+                self.get_loc_str('bumper right button'),
             ),
             "ranges" : (
                 (0, 32767),
@@ -485,7 +494,7 @@ class UIRoot:
                 (lambda x: 1 if (x & button_masks['trigger_left']) > 0 else 0),
                 None,
                 (lambda x: 1 if (x & button_masks['trigger_right']) > 0 else 0),
-                (lambda x: self.get_trigger_threshold()),
+                self.get_trigger_threshold,
 
                 (lambda x: 1 if (x & button_masks['bumper_left']) > 0 else 0),
                 (lambda x: 1 if (x & button_masks['bumper_right']) > 0 else 0),
@@ -511,15 +520,15 @@ class UIRoot:
         self.far_middle_groups = []
 
         accel_gyro_group = {
-            "title" : "Accel/Gyro",
+            "title" : self.get_loc_str('Accel/Gyro'),
             "type" : "LinesWithLabels",
             "labels" : (
-                'Accel X',
-                'Accel Y',
-                'Accel Z',
-                'Gyro X',
-                'Gyro Y',
-                'Gyro Z',
+                self.get_loc_str('Accel X'),
+                self.get_loc_str('Accel Y'),
+                self.get_loc_str('Accel Z'),
+                self.get_loc_str('Gyro X'),
+                self.get_loc_str('Gyro Y'),
+                self.get_loc_str('Gyro Z'),
             ),
             "ranges" : (
                 (-32767, 32767),
@@ -550,16 +559,16 @@ class UIRoot:
         }
         
         quaternion_group = {
-            "title" : "Orientation",
+            "title" : self.get_loc_str('Orientation'),
             "type" : "LinesWithLabels",
             "labels" : (
-                'Quat W',
-                'Quat X',
-                'Quat Y',
-                'Quat Z',
-                'Pitch',
-                'Roll',
-                'Yaw',
+                self.get_loc_str('Quat W'),
+                self.get_loc_str('Quat X'),
+                self.get_loc_str('Quat Y'),
+                self.get_loc_str('Quat Z'),
+                self.get_loc_str('Pitch'),
+                self.get_loc_str('Roll'),
+                self.get_loc_str('Yaw'),
             ),
             "ranges" : (
                 (-32767, 32767),
@@ -593,14 +602,16 @@ class UIRoot:
         }		
 
         haptic_group = {
-            "title" : "Haptic",
+            "title" : self.get_loc_str('Haptic'),
             "type" : "LinesWithLabels",
-            "labels" : ('Haptics Enabled',
-                'Haptics On  usec',
-                'Haptics Off usec',
-                'Haptics Repeat Count',
-                'Haptics Loop Time',
-                'Haptic Mode',),
+            "labels" : (
+                self.get_loc_str('Haptics Enabled'),
+                self.get_loc_str('Haptics On  usec'),
+                self.get_loc_str('Haptics Off usec'),
+                self.get_loc_str('Haptics Repeat Count'),
+                self.get_loc_str('Haptics Loop Time'),
+                self.get_loc_str('Haptic Mode'),
+            ),
             "ranges" : (
                 (0, 2),
                 (0, 1000),
@@ -645,14 +656,15 @@ class UIRoot:
         ##########################################################################################################################################
             
         left_button_group = {
-            "title" : "Left Buttons",
+            "title" : self.get_loc_str('Left Buttons'),
             "type" : "LinesWithLabels",
-            "labels" : ('up',
-                'right',
-                'left',
-                'down',
-                'select',
-                'steam',
+            "labels" : (
+                self.get_loc_str('up'),
+                self.get_loc_str('right'),
+                self.get_loc_str('left'),
+                self.get_loc_str('down'),
+                self.get_loc_str('select'),
+                self.get_loc_str('steam'),
             ),
             "ranges" : (
                 (0, 1),
@@ -689,14 +701,16 @@ class UIRoot:
         }
 
         right_button_group = {
-            "title" : "Right Buttons",
+            "title" : self.get_loc_str('Right Buttons'),
             "type" : "LinesWithLabels",
-            "labels" : ('y',
-                'b',
-                'x',
-                'a',
-                'start',
-                'Alt'),
+            "labels" : (
+                self.get_loc_str('y'),
+                self.get_loc_str('b'),
+                self.get_loc_str('x'),
+                self.get_loc_str('a'),
+                self.get_loc_str('start'),
+                self.get_loc_str('Alt'),
+            ),
             "ranges" : (
                 (0, 1),
                 (0, 1),
@@ -732,13 +746,13 @@ class UIRoot:
         }
 
         grip_button_group = {
-            "title" : "Grip Buttons",
+            "title" : self.get_loc_str('Grip Buttons'),
             "type" : "LinesWithLabels",
             "labels" : (
-                'Grip L Upper',
-                'Grip L Lower',
-                'Grip R Upper',
-                'Grip R Lower',
+                self.get_loc_str('Grip L Upper'),
+                self.get_loc_str('Grip L Lower'),
+                self.get_loc_str('Grip R Upper'),
+                self.get_loc_str('Grip R Lower'),
             ),
             "ranges" : (
                 (0, 1),
@@ -766,64 +780,13 @@ class UIRoot:
             )
         }
 
-
-        self.far_right_groups.append(left_button_group)
-        self.far_right_groups.append(right_button_group)
-        self.far_right_groups.append(grip_button_group)
-    
-        ##########################################################################################################################################
-        ## Ass End Group
-        ##########################################################################################################################################
-
-
-    
-        trackpad_config_group = {
-            "title" : "Trackpad Config",
-            "type" : "LinesWithLabels",
-            "labels" : (
-                'Trackpad Z Thresh',
-                'Trackpad Cent Thresh',
-                'Trackpad Clip',
-                'Trackpad IIR',
-                'Trackpad Hyst'
-            ),
-            "ranges" : (
-                (0, 400),
-                (0, 20),
-                (0, 1),
-                (0, 1),
-                (0, 30)
-            ),
-            "trigger_limits" : (
-                (0, 0),
-                (0, 0),
-                (0, 0),
-                (0, 0),
-                (0, 0),
-            ),
-            "data_xform_funcs" : (
-                (lambda x: self.get_trackpad_z_threshold()),
-                (lambda x: self.get_trackpad_centroid_threshold()),
-                (lambda x: self.get_trackpad_clipping()),
-                (lambda x: self.get_trackpad_iir()),
-                (lambda x: self.get_trackpad_hysteresis()),
-            ),
-            "data_fields" : (
-                None,
-                None,
-                None,
-                None,
-                None,
-            )
-        }
-
         cal_state_group = {
-            "title" : "Calibration State",
+            "title" : self.get_loc_str('Calibration State'),
             "type" : "LinesWithLabels",
             "labels" : (
-                'Thumbsticks',
-                'Triggers',
-                'Pressure',
+                self.get_loc_str('Thumbsticks'),
+                self.get_loc_str('Triggers'),
+                self.get_loc_str('Pressure'),
             ),
             "ranges" : (
                 (0, 2),
@@ -847,9 +810,123 @@ class UIRoot:
                 None,
             )
         }
+
+        self.far_right_groups.append(left_button_group)
+        self.far_right_groups.append(right_button_group)
+        self.far_right_groups.append(grip_button_group)
+        self.far_right_groups.append(cal_state_group)
+
+    
+        ##########################################################################################################################################
+        ## Ass End Group
+        ##########################################################################################################################################
+
+        device_control_group = {
+            "title" : self.get_loc_str('Device Control'),
+            "type" : "LinesWithLabels",
+            "labels" : (
+                self.get_loc_str('Device Number'),
+                self.get_loc_str('Logging Enabled'),
+                self.get_loc_str('Log Compression'),
+                self.get_loc_str('Raw Trackpad Data'),
+                self.get_loc_str('Debug Mode'),
+            ),
+            "ranges" :	(
+                (0, 2),
+                (0, 1),
+                (0, 1),
+                (0, 0xF),
+                (0, 1),
+            ),
+            "trigger_limits" : None,
+            "data_xform_funcs" : (
+                (lambda x: self.dev_num),
+                (lambda x: self.get_logging_state()),
+                (lambda x: self.log_compression),
+                (lambda x: self.raw_trackpad_mode),
+                (lambda x: self.debug_mode),
+            ),
+            "data_fields" : (
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+    
+        trackpad_config_group = {
+            "title" : self.get_loc_str('Trackpad Config'),
+            "type" : "LinesWithLabels",
+            "labels" : (
+                self.get_loc_str('Trackpad Z Thresh'),
+                self.get_loc_str('Trackpad Cent Thresh'),
+                self.get_loc_str('Trackpad Clip'),
+                self.get_loc_str('Trackpad Sensor Filt'),
+                'Trackpad Experimental',
+                'Trackpad Centroid Filt',
+                self.get_loc_str('Trackpad Hyst'),
+                'Middle out',
+                'Static Touch Freq',
+                'Freq Hop Mode',
+                'Gate Mode'
+            ),
+            "ranges" : (
+                (0, 400),
+                (0, 20),
+                (0, 1),
+                (0, 32),
+                (0, 3),
+                (0, 32),
+                (0, 30),
+                (0, 95),
+                (0, 15),
+                (0, 1),
+                (0, 1)
+            ),
+            "trigger_limits" : (
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+            ),
+            "data_xform_funcs" : (
+                (lambda x: self.get_trackpad_z_threshold()),
+                (lambda x: self.get_trackpad_centroid_threshold()),
+                (lambda x: self.get_trackpad_clipping()),
+                (lambda x: (1 << self.get_trackpad_sensor_iir())),
+                (lambda x: self.get_trackpad_expr()),
+                (lambda x: (1 << self.get_trackpad_centroid_iir())),
+                (lambda x: self.get_trackpad_hysteresis()),
+                (lambda x: self.get_middle_out_percentage()),
+                (lambda x: self.get_static_touch_freq()),
+                (lambda x: self.get_freq_hop_mode()),
+                (lambda x: self.get_trackpad_gate_mode())
+            ),
+            "data_fields" : (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+
         self.ass_end_groups.append(device_control_group)
         self.ass_end_groups.append(trackpad_config_group)
-        self.ass_end_groups.append(cal_state_group)
         self.ass_end_groups.append(haptic_group)
 
 
@@ -866,6 +943,9 @@ class UIRoot:
         self.trackpad_z_threshold = 50
         self.trackpad_framerate = 8
         self.trigger_threshold = 90
+        self.middle_out_percentage = 50
+        self.static_touch_freq = 0
+        self.freq_hop_mode = 0
 
         # 1 is legacy mode
         self.haptic_mode = 1
@@ -875,10 +955,11 @@ class UIRoot:
         self.trigger_raw = 0
         self.thumbstick_raw_mode = 0
         self.trackpad_clipping = 1
-        self.trackpad_iir = 1
+        self.trackpad_filtering= 0
         self.trackpad_centroid_threshold = 0
         self.trackpad_hysteresis = 0
-        self.debug_mode = 0
+        self.raw_trackpad_mode = 0
+        self.trackpad_gate = 1
 
         # Cal steps 0 = none, 1 = deadzone, 2 = outer extents,3 write -> goes back to 0
         self.thumbstick_cal_current_step = 0 
@@ -900,9 +981,8 @@ class UIRoot:
         self.device_info = {}
         self.device_str_info = {}
 
-        self.fast_scan = 0
-
         self.log_start_time = 0
+        self.debug_mode = 0
 
         self.devinfo_hold_off_count = 0
 
@@ -938,9 +1018,12 @@ class UIRoot:
             data = self.cntrlr_mgr.get_data()
             sorted_keys = list(data.keys())
 #			sorted_keys.sort()
-
+            self.log_timestamp = True
+            
+            if self.log_timestamp:
+                self.logfile.write("timestamp(ns), ")
             for entry in sorted_keys:
-                self.logfile.write("{0}, ".format(entry))
+                self.logfile.write("{0},".format(entry.strip()))
             self.logfile.write('\n')
 
 
@@ -961,7 +1044,8 @@ class UIRoot:
 
         sorted_keys = list(data.keys())
 #		sorted_keys.sort()
-
+        if self.log_timestamp:
+            self.logfile.write("{0}, ".format(time.perf_counter_ns()))
         for entry in sorted_keys:
             if (entry == 'buttons_0' or entry == 'buttons_1'):
                 self.logfile.write("{0}, ".format("0x{:08x}".format(data[entry])))
@@ -1043,12 +1127,30 @@ class UIRoot:
     def get_trackpad_clipping(self):
         return self.trackpad_clipping
     
-    def get_trackpad_iir(self):
-        return self.trackpad_iir
+    def get_trackpad_sensor_iir(self):
+        return self.trackpad_filtering & 0x000F
+
+    def get_trackpad_gate_mode(self):
+        return (self.trackpad_filtering & 0x0100 ) >> 8 
+
+    def get_trackpad_expr(self):
+        return (self.trackpad_filtering & 0x0600 ) >> 9
     
+    def get_trackpad_centroid_iir(self):
+        return (self.trackpad_filtering & 0x00F0 ) >> 4 
+
     def get_trackpad_hysteresis(self):
         return self.trackpad_hysteresis
 
+    def get_middle_out_percentage(self):
+        return self.middle_out_percentage
+    
+    def get_static_touch_freq(self):
+        return self.static_touch_freq
+
+    def get_freq_hop_mode(self):
+        return self.freq_hop_mode
+    
     def get_trackpad_framerate(self):
         return self.trackpad_framerate	
 
@@ -1056,22 +1158,26 @@ class UIRoot:
         return self.haptic_mode
 
     def get_dev_info(self, field):
-        if self.cntrlr_mgr.is_open() and not self.device_info:
+        if self.cntrlr_mgr.is_open() and not self.device_info and not self.device_info.get(field):
             self.devinfo_hold_off_count += 1
-            if self.devinfo_hold_off_count >= 10:
-                self.devinfo_hold_off_count = 0
+            if self.devinfo_hold_off_count >= 100:
+
                 self.device_info = self.cntrlr_mgr.get_attributes()
                 self.trackpad_z_threshold = self.cntrlr_mgr.get_setting(63)
                 self.trackpad_centroid_threshold = self.cntrlr_mgr.get_setting(67)
                 self.trackpad_framerate = self.cntrlr_mgr.get_setting(64)
-                self.trackpad_iir = self.cntrlr_mgr.get_setting(65)
+                self.trackpad_filtering = self.cntrlr_mgr.get_setting(65)
                 self.trigger_threshold = self.cntrlr_mgr.get_setting(68)
                 self.trackpad_hysteresis = self.cntrlr_mgr.get_setting(69)
-
+                self.middle_out_percentage = self.cntrlr_mgr.get_setting(71)
+                self.static_touch_freq = self.cntrlr_mgr.get_setting(72)
+                self.freq_hop_mode = self.cntrlr_mgr.get_setting(73)
+        else:
+            self.devinfo_hold_off_count = 0
 
         return self.device_info.get(field)
 
-    def get_trigger_threshold(self):
+    def get_trigger_threshold(self, x=None):
         return self.trigger_threshold
 
     def get_unique_id(self):
@@ -1183,11 +1289,11 @@ class UIRoot:
     def set_tick_side(self, side):
         self.tick_side = side
 
-    def set_debug_mode(self, mode):
-        self.debug_mode = mode
+    def set_raw_trackpad_mode(self, mode):
+        self.raw_trackpad_mode = mode
     
-    def get_debug_mode(self):
-        return self.debug_mode
+    def get_raw_trackpad_mode(self):
+        return self.raw_trackpad_mode
         
     def create_ui(self):
         self.all_column_data = (self.far_left_groups, self.left_groups, self.middle_groups, self.right_groups, self.far_right_groups, self.ass_end_groups)
@@ -1248,9 +1354,6 @@ class UIRoot:
         self.device_str_info = {}
 
         self.cntrlr_mgr.clear_data()
-
-        self.fast_scan = 0
-
 
     def tick(self):
         data = self.cntrlr_mgr.get_data()
@@ -1747,7 +1850,7 @@ class XYPlotGroup:
 
         x = self.x_origin
         y = self.y_origin + ui_dimensions["XYPlotGroupYOffset"]
-        self.widgets['label'] = self.canvas.create_text(x, y, anchor=Tk.SW, text=self.title, fill=color_pallete[2], font=ui_fonts['xyp_header'])
+        self.widgets['label'] = self.canvas.create_text(x, y, anchor=Tk.SW, text=self.title, fill=color_pallete[2], font=ui_fonts['xyp_label'])
 
         self.widgets['box'] = self.canvas.create_rectangle(self.x_origin, self.y_origin + ui_dimensions["XYPlotGroupYOffset"],
                                                             self.x_origin + ui_dimensions["XYPlotGroupWidth"],
@@ -1757,7 +1860,7 @@ class XYPlotGroup:
     def set_origin(self, x, y):
         self.x_origin = x
         self.y_origin = y
-
+        
     def update(self, values):
         if len(values) / 2 != len(self.lines):
             self.logger.info("XYPlotGroup::update: wrong number of values vs plots")
