@@ -54,8 +54,8 @@ eng_loc = {
     'trigger raw_right':    'trigger raw_right',
     'trigger right button': 'trigger right button',
     'trigger threshold':    'trigger threshold',
-    'bumper left button':   'bumper left button',
-    'bumper right button':  'bumper right button',
+    'bumper left button':   'bumper',
+    'bumper right button':  'bumper',
 
     'Accel/Gyro':           'Accel/Gyro',
     'Accel X':              'Accel X',
@@ -75,12 +75,12 @@ eng_loc = {
     'Yaw':                  'Yaw',
 
     'Haptic':               'Haptic',
-    'Haptics Enabled':      'Haptics Enabled',
+    'Haptics Enabled':      'Enabled',
     'Haptics On  usec':     'Haptics On  usec',
     'Haptics Off usec':     'Haptics Off usec',
-    'Haptics Repeat Count': 'Haptics Repeat Count',
-    'Haptics Loop Time':    'Haptics Loop Time',
-    'Haptic Mode':          'Haptic Mode',
+    'Haptics Repeat Count': 'Repeat Count',
+    'Haptics Loop Time':    'Loop Time',
+    'Haptic Mode':          'Legacy Mode',
 
     'Left Buttons':         'Left Buttons',
     'up':                   'up',

@@ -4,11 +4,13 @@ import logging
 import gzip
 from loc_strings import loc_strings
 
-__version__ = "$Revision: #27 $"
-__date__ = "$DateTime: 2021/02/08 09:42:51 $"
+__version__ = "$Revision: #38 $"
+__date__ = "$DateTime: 2021/07/30 11:04:00 $"
 
 highlight = False
 color_pallete = []
+debug_trails = 0
+
 
 button_masks = {
     'trigger_right':			0x0000000000000001,
@@ -91,10 +93,15 @@ ui_dimensions = {
     "XYPlotGroupYBoxPad":6 * ui_scale,
 }
 
+trackpad_zoom = 1
 
 class UIRoot:
     def get_loc_str(self, txt):
         return loc_strings[self.language][txt]
+
+    def toggle_debug_trails(self):
+        global debug_trails
+        debug_trails = 1 - debug_trails
 
     def __init__(self, cntrlr_mgr, root, canvas, colors, language):
         self.logger = logging.getLogger('RTST.UI')
@@ -249,11 +256,6 @@ class UIRoot:
                 self.get_loc_str('Finger Present R'),
                 self.get_loc_str('Click Left'),
                 self.get_loc_str('Click Right'),
-                "Left  X STDEV",
-                "Left  Y STDEV",
-                "Right X STDEV",
-                "Right Y STDEV",
-
             ),
             "ranges" : (
                 (-32767, 32767),
@@ -266,10 +268,6 @@ class UIRoot:
                 (0, 1),
                 (0, 1),
                 (0, 1),
-                (0, 150),
-                (0, 150),
-                (0, 150),
-                (0, 150),
             ),
             "trigger_limits" : (
                 (.1, .9),
@@ -278,10 +276,6 @@ class UIRoot:
                 (.1, .9),
                 (0, .9),
                 (0, .9),
-                (0, 1),
-                (0, 1),
-                (0, 1),
-                (0, 1),
                 (0, 1),
                 (0, 1),
                 (0, 1),
@@ -298,10 +292,6 @@ class UIRoot:
                 (lambda x: 1 if (x & button_masks['finger_present_right']) > 0 else 0),
                 (lambda x: 1 if (x & button_masks['padclick_left']) > 0 else 0),
                 (lambda x: 1 if (x & button_masks['padclick_right']) > 0 else 0),
-                None,
-                None,
-                None,
-                None,
             ),
             "data_fields" : (
                 'left_x',
@@ -313,11 +303,43 @@ class UIRoot:
                 'buttons_0',
                 'buttons_0',
                 'buttons_0',
-                'buttons_0',
+                'buttons_0',      
+            )
+        }
+
+        trackpad_jitter_group = {
+            "title" : 'Trackpad Jitter',
+            "type" : "LinesWithLabels",
+            "labels" : (
+                "Left  X STDEV",
+                "Left  Y STDEV",
+                "Right X STDEV",
+                "Right Y STDEV",
+            ),
+            "ranges" : (
+                (0, 150),
+                (0, 150),
+                (0, 150),
+                (0, 150),
+            ),
+            "trigger_limits" : (
+                (0, 1),
+                (0, 1),
+                (0, 1),
+                (0, 1),
+            ),
+            "data_xform_funcs" : (
+                None,
+                None,
+                None,
+                None,
+            ),
+            "data_fields" : (
                 'l_x_stdev',
                 'l_y_stdev',
                 'r_x_stdev',
-                'r_y_stdev',            )
+                'r_y_stdev',            
+            ),
         }    
 
         trackpad_plot_group = {
@@ -334,8 +356,7 @@ class UIRoot:
                 (-32767, 32767),
             ),
             "trigger_limits" : None,
-            "data_xform_funcs" :
-            (),
+            "data_xform_funcs" : (),
             "data_fields" : (
                 'left_x',
                 'left_y',
@@ -356,6 +377,7 @@ class UIRoot:
 
         self.left_groups.append(trackpad_plot_group)
         self.left_groups.append(trackpad_data_group)
+        self.left_groups.append(trackpad_jitter_group)
 
         ##########################################################################################################################################
         ## Middle Group
@@ -368,60 +390,85 @@ class UIRoot:
                 self.get_loc_str('L Stick Y'),
                 self.get_loc_str('R Stick X'),
                 self.get_loc_str('R Stick Y'),
-                self.get_loc_str('L Stick Raw'),
                 self.get_loc_str('L Stick Touch'),
                 self.get_loc_str('L Stick Click'),
-                self.get_loc_str('R Stick Raw'),
                 self.get_loc_str('R Stick Touch'),
                 self.get_loc_str('R Stick Click'),
+                'Threshold',
             ),
             "ranges" : (
                 (-32767, 32767),
                 (-32767, 32767),
                 (-32767, 32767),
                 (-32767, 32767),
-                (0, 100),
                 (0, 1),
                 (0, 1),
-                (0, 100),
                 (0, 1),
                 (0, 1),
-                ),
+                (0, 40),
+            ),
             "trigger_limits" : (
                 (.30, .70),
                 (.30, .70),
                 (.30, .70),
                 (.30, .70),
-                (0, 20),
                 (0, 1),
                 (0, 1),
-                (0, 20),
                 (0, 1),
                 (0, 1),
-                ),
+                (0, 1),
+            ),
             "data_xform_funcs" : (
-                None,
                 None,
                 None,
                 None,
                 None,
                 (lambda x: 1 if (x & button_masks['thumbstick_left_touch']) > 0 else 0),
                 (lambda x: 1 if (x & button_masks['thumbstick_left_button']) > 0 else 0),
-                None,
                 (lambda x: 1 if (x & button_masks['thumbstick_right_touch']) > 0 else 0),
                 (lambda x: 1 if (x & button_masks['thumbstick_right_button']) > 0 else 0),
+                (lambda x: self.get_thumbstick_touch_threshold()),
             ),
             "data_fields" : (
                 'left_stick_x',
                 'left_stick_y',
                 'right_stick_x',
                 'right_stick_y',
-                'left_thumbstick_touch',
                 'buttons_1',
                 'buttons_0',
-                'right_thumbstick_touch',
                 'buttons_1',
                 'buttons_0',
+                'None',
+            )
+        }
+
+        debug_data_group = {
+            "title" : 'Debug Data',
+            "type" : "LinesWithLabels",
+            "labels" : (
+                'Debug Display Mode',
+                'Left Debug',
+                'Right Debug',
+            ),
+            "ranges" : (
+                (0, 3),
+                (-32767, 32767),
+                (-32767, 32767),
+            ),
+            "trigger_limits" : (
+                (0, 0),
+                (0, 1),
+                (0, 1),
+             ),
+            "data_xform_funcs" : (
+                (lambda x: self.get_debug_display_mode()),
+                None,
+                None,
+            ),
+            "data_fields" : (
+                None,
+                'left_debug',
+                'right_debug',
             )
         }
 
@@ -468,8 +515,6 @@ class UIRoot:
                 self.get_loc_str('trigger raw_right'),
                 self.get_loc_str('trigger right button'),
                 self.get_loc_str('trigger threshold'),
-                self.get_loc_str('bumper left button'),
-                self.get_loc_str('bumper right button'),
             ),
             "ranges" : (
                 (0, 32767),
@@ -477,8 +522,6 @@ class UIRoot:
                 (0, 32767),
                 (0, 1),
                 (0, 100),
-                (0, 1),
-                (0, 1),
             ),
             "trigger_limits" : (
                 (0, .9),
@@ -486,8 +529,6 @@ class UIRoot:
                 (0, .9),
                 (0, 1),
                 (0, 40),
-                (0, 1),
-                (0, 1),
             ),
             "data_xform_funcs" : (
                 None,
@@ -495,9 +536,6 @@ class UIRoot:
                 None,
                 (lambda x: 1 if (x & button_masks['trigger_right']) > 0 else 0),
                 self.get_trigger_threshold,
-
-                (lambda x: 1 if (x & button_masks['bumper_left']) > 0 else 0),
-                (lambda x: 1 if (x & button_masks['bumper_right']) > 0 else 0),
             ),
             "data_fields" : (
                 'trigger_raw_left',
@@ -505,13 +543,12 @@ class UIRoot:
                 'trigger_raw_right',
                 'buttons_0',
                 None,
-                'buttons_0',
-                'buttons_0',
             )
         }
 
         self.middle_groups.append(thumbstick_plot_group)
         self.middle_groups.append(thumbstick_data_group)
+        self.middle_groups.append(debug_data_group)
 
         ##########################################################################################################################################
         ## Right Group
@@ -606,19 +643,23 @@ class UIRoot:
             "type" : "LinesWithLabels",
             "labels" : (
                 self.get_loc_str('Haptics Enabled'),
-                self.get_loc_str('Haptics On  usec'),
-                self.get_loc_str('Haptics Off usec'),
+                'Frequency',
+                'Duty Cycle %',
                 self.get_loc_str('Haptics Repeat Count'),
                 self.get_loc_str('Haptics Loop Time'),
                 self.get_loc_str('Haptic Mode'),
+                'Haptic gain (dB)',
+                'Haptic Int (0-4)'
             ),
             "ranges" : (
                 (0, 2),
                 (0, 1000),
-                (0, 200),
+                (0, 100),
                 (0, 10),
                 (0, 40),
                 (0, 1),
+                (-24, 6),
+                (0, 3),
             ),
             "trigger_limits" : (
                 (.5 , .6),
@@ -628,16 +669,22 @@ class UIRoot:
                 (.5 , .6),
                 (.5 , .6),	
                 (.5 , .6),
+                (0, 1),
+                (0, 1),
             ),
             "data_xform_funcs" : (
                 (lambda x: self.get_ticking_display()),
-                (lambda x: self.get_tick_on_us()),
-                (lambda x: self.get_tick_off_us()),
+                (lambda x: self.get_haptic_freq()),
+                (lambda x: self.get_haptic_duty_cycle()),
                 (lambda x: self.get_tick_repeat()),
                 (lambda x: self.get_tick_interval()),
                 (lambda x: self.get_haptic_mode()),
-            ),
+                (lambda x: self.get_haptic_gain()),
+                (lambda x: self.get_haptic_len()),
+           ),
             "data_fields" : (
+                None,
+                None,
                 None,
                 None,
                 None,
@@ -665,8 +712,11 @@ class UIRoot:
                 self.get_loc_str('down'),
                 self.get_loc_str('select'),
                 self.get_loc_str('steam'),
+                self.get_loc_str('bumper left button'),
+
             ),
             "ranges" : (
+                (0, 1),
                 (0, 1),
                 (0, 1),
                 (0, 1),
@@ -681,6 +731,7 @@ class UIRoot:
                 (0, 1),
                 (0, 1),
                 (0, 1),
+                (0, 1),
             ),
             "data_xform_funcs" : (
                 (lambda x: 1 if (x & button_masks['up']) > 0 else 0),
@@ -689,8 +740,10 @@ class UIRoot:
                 (lambda x: 1 if (x & button_masks['down']) > 0 else 0),
                 (lambda x: 1 if (x & button_masks['select']) > 0 else 0),
                 (lambda x: 1 if (x & button_masks['steam']) > 0 else 0),
+                (lambda x: 1 if (x & button_masks['bumper_left']) > 0 else 0),
             ),
             "data_fields" : (
+                'buttons_0',
                 'buttons_0',
                 'buttons_0',
                 'buttons_0',
@@ -710,8 +763,11 @@ class UIRoot:
                 self.get_loc_str('a'),
                 self.get_loc_str('start'),
                 self.get_loc_str('Alt'),
+                self.get_loc_str('bumper right button'),
+
             ),
             "ranges" : (
+                (0, 1),
                 (0, 1),
                 (0, 1),
                 (0, 1),
@@ -726,6 +782,7 @@ class UIRoot:
                 (0, 1),
                 (0, 1),
                 (0, 1),
+                (0, 1),
             ),
             "data_xform_funcs" : (
                 (lambda x: 1 if (x & button_masks['y']) > 0 else 0),
@@ -734,6 +791,7 @@ class UIRoot:
                 (lambda x: 1 if (x & button_masks['a']) > 0 else 0),
                 (lambda x: 1 if (x & button_masks['start']) > 0 else 0),
                 (lambda x: 1 if (x & button_masks['alt_guide']) > 0 else 0),
+                (lambda x: 1 if (x & button_masks['bumper_right']) > 0 else 0),
             ),
             "data_fields" : (
                 'buttons_0',
@@ -742,6 +800,7 @@ class UIRoot:
                 'buttons_0',
                 'buttons_0',
                 'buttons_1',
+                'buttons_0',
             )
         }
 
@@ -830,12 +889,14 @@ class UIRoot:
                 self.get_loc_str('Log Compression'),
                 self.get_loc_str('Raw Trackpad Data'),
                 self.get_loc_str('Debug Mode'),
+                'Control Lockout',
             ),
             "ranges" :	(
                 (0, 2),
                 (0, 1),
                 (0, 1),
                 (0, 0xF),
+                (0, 1),
                 (0, 1),
             ),
             "trigger_limits" : None,
@@ -845,8 +906,10 @@ class UIRoot:
                 (lambda x: self.log_compression),
                 (lambda x: self.raw_trackpad_mode),
                 (lambda x: self.debug_mode),
+                (lambda x: self.control_lockout),
             ),
             "data_fields" : (
+                None,
                 None,
                 None,
                 None,
@@ -859,28 +922,18 @@ class UIRoot:
             "title" : self.get_loc_str('Trackpad Config'),
             "type" : "LinesWithLabels",
             "labels" : (
-                self.get_loc_str('Trackpad Z Thresh'),
-                self.get_loc_str('Trackpad Cent Thresh'),
+                'Rushmore Noise Thresh',
+                'Rushmore Touch Thresh',
+                'Rushmore Notouch Thresh',
+                'Rushmore Noise Floor',
+                'Rushmore Freq Hopping',
                 self.get_loc_str('Trackpad Clip'),
-                self.get_loc_str('Trackpad Sensor Filt'),
-                'Trackpad Experimental',
-                'Trackpad Centroid Filt',
-                self.get_loc_str('Trackpad Hyst'),
-                'Middle out',
-                'Static Touch Freq',
-                'Freq Hop Mode',
-                'Gate Mode'
             ),
             "ranges" : (
                 (0, 400),
-                (0, 20),
-                (0, 1),
-                (0, 32),
-                (0, 3),
-                (0, 32),
-                (0, 30),
-                (0, 95),
-                (0, 15),
+                (0, 1800),
+                (0 ,1800),
+                (0, 300),
                 (0, 1),
                 (0, 1)
             ),
@@ -890,32 +943,17 @@ class UIRoot:
                 (0, 0),
                 (0, 0),
                 (0, 0),
-                (0, 0),
-                (0, 0),
-                (0, 0),
-                (0, 0),
-                (0, 0),
-                (0, 0),
+                (0, 0)
             ),
             "data_xform_funcs" : (
-                (lambda x: self.get_trackpad_z_threshold()),
-                (lambda x: self.get_trackpad_centroid_threshold()),
+                (lambda x: self.get_rushmore_noise_threshold()),
+                (lambda x: self.get_rushmore_touch_threshold()),
+                (lambda x: self.get_rushmore_notouch_threshold()),
+                (lambda x: self.get_rushmore_noise_floor()),
+                (lambda x: self.get_rushmore_freq_hopping()),
                 (lambda x: self.get_trackpad_clipping()),
-                (lambda x: (1 << self.get_trackpad_sensor_iir())),
-                (lambda x: self.get_trackpad_expr()),
-                (lambda x: (1 << self.get_trackpad_centroid_iir())),
-                (lambda x: self.get_trackpad_hysteresis()),
-                (lambda x: self.get_middle_out_percentage()),
-                (lambda x: self.get_static_touch_freq()),
-                (lambda x: self.get_freq_hop_mode()),
-                (lambda x: self.get_trackpad_gate_mode())
             ),
             "data_fields" : (
-                None,
-                None,
-                None,
-                None,
-                None,
                 None,
                 None,
                 None,
@@ -929,8 +967,6 @@ class UIRoot:
         self.ass_end_groups.append(trackpad_config_group)
         self.ass_end_groups.append(haptic_group)
 
-
-
         ##########################################################################################################################################
 
         self.columns = []
@@ -940,24 +976,28 @@ class UIRoot:
         for col in self.columns:
             col.build_ui()
 
-        self.trackpad_z_threshold = 50
+        self.rushmore_noise_threshold = 0
+        self.rushmore_touch_threshold = 0
+        self.rushmore_notouch_threshold = 0
+        self.rushmore_noise_floor = 0
+        self.rushmore_freq_hopping = 0
+
         self.trackpad_framerate = 8
         self.trigger_threshold = 90
-        self.middle_out_percentage = 50
-        self.static_touch_freq = 0
-        self.freq_hop_mode = 0
+        self.rushmore_l_ef_index = 0
+        self.rushmore_r_ef_index = 0
 
-        # 1 is legacy mode
-        self.haptic_mode = 1
+        self.debug_display_mode = 0
+        self.thumbstick_touch_threshold = 0
+
+        # 0 = dac. 1 is legacy mode
+        self.haptic_mode = 0
 
         self.imu_mode = 0
         self.pressure_raw = 0
         self.trigger_raw = 0
         self.thumbstick_raw_mode = 0
         self.trackpad_clipping = 1
-        self.trackpad_filtering= 0
-        self.trackpad_centroid_threshold = 0
-        self.trackpad_hysteresis = 0
         self.raw_trackpad_mode = 0
         self.trackpad_gate = 1
 
@@ -974,8 +1014,12 @@ class UIRoot:
         self.tick_count = 0
         self.tick_interval = 20
         self.tick_side = 0
-        self.tick_on_us = 3500
-        self.tick_off_us = 2200
+
+        self.haptic_freq = 170
+        self.haptic_duty_percent = 50
+
+        self.haptic_gain = 0
+        self.haptic_len = 1
         self.tick_repeat = 3
 
         self.device_info = {}
@@ -983,14 +1027,34 @@ class UIRoot:
 
         self.log_start_time = 0
         self.debug_mode = 0
+        self.control_lockout = 1
 
         self.devinfo_hold_off_count = 0
 
-#	def toggle_thumbstick_raw_mode ( self ):
-#		self.thumbstick_raw_mode = not self.thumbstick_raw_mode
+    def connected(self):
+        self.rushmore_noise_threshold = self.cntrlr_mgr.get_setting(51)
+        self.trackpad_framerate = self.cntrlr_mgr.get_setting(64)
+        self.trigger_threshold = self.cntrlr_mgr.get_setting(68)
+        self.thumbstick_touch_threshold = self.cntrlr_mgr.get_setting(77)
+        self.rushmore_l_ef_index = self.cntrlr_mgr.get_setting(72)
+        self.rushmore_r_ef_index = self.cntrlr_mgr.get_setting(73)
+        self.rushmore_touch_threshold = self.cntrlr_mgr.get_setting(19)
+        self.rushmore_notouch_threshold = self.cntrlr_mgr.get_setting(20)
+        self.rushmore_noise_floor = self.cntrlr_mgr.get_setting(63)
+        self.rushmore_freq_hopping = self.cntrlr_mgr.get_setting(69)
+        self.control_lockout = self.cntrlr_mgr.get_setting(75)
+        self.haptic_len =  self.cntrlr_mgr.get_setting(65)
 
-#	def get_thumbstick_raw_mode ( self ):
-#		return self.thumbstick_raw_mode
+    def get_debug_display_mode( self ):
+        return self.debug_display_mode
+
+    def set_trackpad_zoom( self, zoom ):
+        global trackpad_zoom
+        trackpad_zoom = zoom
+
+    def get_trackpad_zoom( self ):
+        global trackpad_zoom
+        return trackpad_zoom
 
     def toggle_highlight(self):
         global highlight
@@ -1014,7 +1078,7 @@ class UIRoot:
                     self.logger.info("Error: Couldn't open log file")
                     return
 
-#			// Headers for columns
+#			// Hea for columns
             data = self.cntrlr_mgr.get_data()
             sorted_keys = list(data.keys())
 #			sorted_keys.sort()
@@ -1081,32 +1145,30 @@ class UIRoot:
     def get_ticking_display(self):
         if not self.get_ticking_state():
             return "Off", 0
-        elif self.get_tick_side():
+        elif self.get_tick_side() == 1:
             return "Left", 1
-        else:
+        elif self.get_tick_side() == 2:
             return "Right", 2
+        else:
+            return "Both", 3
 
-    def get_tick_on_us(self):
-        return self.tick_on_us
+    def get_haptic_freq(self):
+        return self.haptic_freq
 
-    def get_tick_off_us(self):
-        return self.tick_off_us
+    def get_haptic_duty_cycle(self):
+        return self.haptic_duty_percent
+
+    def get_haptic_gain(self):
+        return self.haptic_gain
+
+    def get_haptic_len(self):
+        return self.haptic_len
 
     def get_tick_repeat(self):
         return self.tick_repeat
 
     def get_tick_interval(self):
         return self.tick_interval
-
-    def increment_tick_on_us(self):
-        self.tick_on_us += 100
-        if self.tick_on_us > 5000:
-            self.tick_on_us = 0
-
-    def increment_tick_off_us(self):
-        self.tick_off_us += 100
-        if self.tick_off_us > 5000:
-            self.tick_off_us = 0
 
     def increment_tick_repeat(self):
         self.tick_repeat += 1
@@ -1118,38 +1180,23 @@ class UIRoot:
         if self.tick_interval > 40:
             self.tick_interval = 2
 
-    def get_trackpad_z_threshold(self):
-        return self.trackpad_z_threshold
+    def get_rushmore_noise_threshold(self):
+        return self.rushmore_noise_threshold
     
-    def get_trackpad_centroid_threshold(self):
-        return self.trackpad_centroid_threshold
+    def get_rushmore_touch_threshold(self):
+        return self.rushmore_touch_threshold  
     
+    def get_rushmore_notouch_threshold(self):
+        return self.rushmore_notouch_threshold
+    
+    def get_rushmore_noise_floor(self):
+        return self.rushmore_noise_floor
+
+    def get_rushmore_freq_hopping(self):
+        return self.rushmore_freq_hopping    
+
     def get_trackpad_clipping(self):
         return self.trackpad_clipping
-    
-    def get_trackpad_sensor_iir(self):
-        return self.trackpad_filtering & 0x000F
-
-    def get_trackpad_gate_mode(self):
-        return (self.trackpad_filtering & 0x0100 ) >> 8 
-
-    def get_trackpad_expr(self):
-        return (self.trackpad_filtering & 0x0600 ) >> 9
-    
-    def get_trackpad_centroid_iir(self):
-        return (self.trackpad_filtering & 0x00F0 ) >> 4 
-
-    def get_trackpad_hysteresis(self):
-        return self.trackpad_hysteresis
-
-    def get_middle_out_percentage(self):
-        return self.middle_out_percentage
-    
-    def get_static_touch_freq(self):
-        return self.static_touch_freq
-
-    def get_freq_hop_mode(self):
-        return self.freq_hop_mode
     
     def get_trackpad_framerate(self):
         return self.trackpad_framerate	
@@ -1157,21 +1204,17 @@ class UIRoot:
     def get_haptic_mode(self):
         return self.haptic_mode
 
+    def get_haptic_gain(self):
+        return self.haptic_gain
+    
+    def get_thumbstick_touch_threshold(self):
+        return self.thumbstick_touch_threshold
+
     def get_dev_info(self, field):
         if self.cntrlr_mgr.is_open() and not self.device_info and not self.device_info.get(field):
             self.devinfo_hold_off_count += 1
-            if self.devinfo_hold_off_count >= 100:
-
+            if self.devinfo_hold_off_count >= 200:
                 self.device_info = self.cntrlr_mgr.get_attributes()
-                self.trackpad_z_threshold = self.cntrlr_mgr.get_setting(63)
-                self.trackpad_centroid_threshold = self.cntrlr_mgr.get_setting(67)
-                self.trackpad_framerate = self.cntrlr_mgr.get_setting(64)
-                self.trackpad_filtering = self.cntrlr_mgr.get_setting(65)
-                self.trigger_threshold = self.cntrlr_mgr.get_setting(68)
-                self.trackpad_hysteresis = self.cntrlr_mgr.get_setting(69)
-                self.middle_out_percentage = self.cntrlr_mgr.get_setting(71)
-                self.static_touch_freq = self.cntrlr_mgr.get_setting(72)
-                self.freq_hop_mode = self.cntrlr_mgr.get_setting(73)
         else:
             self.devinfo_hold_off_count = 0
 
@@ -1244,6 +1287,13 @@ class UIRoot:
         else:
             hw_id = self.get_dev_info('secondary_hw_id')
 
+        singleton = False
+        if hw_id is not None:
+            if 0x80 & hw_id:
+                singleton = True
+
+            hw_id = hw_id & 0x7F
+
         name = 'Unknown'
         if hw_id == 1:
             name = 'D0G'
@@ -1279,9 +1329,24 @@ class UIRoot:
             name = 'Quanta-BUB'
         elif hw_id == 20:
             name = 'NEVADA V2'
+        elif hw_id == 21:
+            name = 'EV1_TIMP'
+        elif hw_id == 22:
+            name = 'EV1_RUSHMORE'
+        elif hw_id == 23:
+            name = 'NFF_V3'
+        elif hw_id == 24:
+            name = 'PRE EV2'
+        elif hw_id == 25:
+            name = 'EV2 (AOK)'
+        elif hw_id == 26:
+            name = 'EV2 (YDB)'
         elif hw_id:
             name = 'Unknown (%d)' % hw_id
-        return name
+        elif hw_id == None:
+            hw_id = 0
+            name = 'None'
+        return "{:2}: {} {}".format(hex(int(hw_id)), name, 'S' if singleton else '')
 
     def set_ticking_state(self, state):
         self.ticking = state
@@ -1348,6 +1413,8 @@ class UIRoot:
         for group_column in group_column_list:
         # Update columns with NULL data.
             self.update_column({}, group_column[0], group_column[1])
+            self.update_column({}, group_column[0], group_column[1])
+            self.update_column({}, group_column[0], group_column[1])
 
         # clear cached device info
         self.device_info = {}
@@ -1377,16 +1444,25 @@ class UIRoot:
             if self.ticking:
                 self.tick_count += 1
                 if self.tick_count >= self.tick_interval:
-                    if self.tick_side:
-                        self.cntrlr_mgr.haptic_pulse(0, self.tick_on_us, self.tick_off_us, self.tick_repeat)
+
+                    period = 1000000 / self.haptic_freq
+                    tick_on_us = int( period * (self.haptic_duty_percent / 100))
+                    tick_off_us = int (period * ((100 - self.haptic_duty_percent) / 100) )
+
+                    if self.tick_side == 1:
+                        tick_target = 1
+                    elif self.tick_side == 2:
+                        tick_target = 0
                     else:
-                        self.cntrlr_mgr.haptic_pulse(1, self.tick_on_us, self.tick_off_us, self.tick_repeat)
+                        tick_target = 2
+
+                    self.cntrlr_mgr.haptic_pulse(tick_target, tick_on_us, tick_off_us, self.tick_repeat, self.haptic_gain)
+
 
                     self.tick_count = 0
 #		Would like to update something, but that leads to lost frames currently
 #		else:
 #			self.update_column(data, self.far_left_groups, self.columns[0])
-
             
         self.tick_job = self.root.after(self.tick_interval_ms, self.tick)
 
@@ -1485,7 +1561,10 @@ class ValueLine:
         if self.xform_func:
             value = self.xform_func(value)
 
-        valf = float(value - self.range[0]) / float(self.range[1] - self.range[0])
+        try:
+            valf = float(value - self.range[0]) / float(self.range[1] - self.range[0])
+        except:
+            valf = 0.
 
         if(valf > 1.0): valf = 1.0
         if(valf < 0.0): valf = 0.0
@@ -1530,15 +1609,15 @@ class XYPlot:
 
         self.trails_enabled = trails_enabled
 
-        self.trail_count = 50
+        self.trail_count = 10
 
         self.trails = []
         self.trail_pos = []
+        self.color_str = [None] *self.trail_count
 
     def lerp(self, a, a0, a1, b0, b1):
         i = (float(a) - a0) / (a1 - a0)
         return i * (b1 - b0) + b0
-
     def build_ui(self):
         self.widgets['box'] = self.canvas.create_rectangle(self.x_origin, self.y_origin,
                                                             self.x_origin + ui_dimensions["XYPlotSize"], self.y_origin + ui_dimensions["XYPlotSize"],
@@ -1560,9 +1639,9 @@ class XYPlot:
                 blend_color_g = int(self.lerp(scale, 0, 1, outline_color_g, bg_color_g))
                 blend_color_b = int(self.lerp(scale, 0, 1, outline_color_b, bg_color_b))
 
-                color_str = "#%02x%02x%02x" % (blend_color_r, blend_color_g, blend_color_b)
+                self.color_str[i] = "#%02x%02x%02x" % (blend_color_r, blend_color_g, blend_color_b)
 
-                self.trails.append(self.canvas.create_oval(0, 0, 0, 0, outline=color_str, fill=color_str))
+                self.trails.append(self.canvas.create_oval(0, 0, 0, 0, outline=self.color_str[i], fill=self.color_str[i]))
 
         self.lines = []
         for i in range(self.max_lines):
@@ -1584,24 +1663,52 @@ class XYPlot:
         self.xform_func = xform_func
 
     def update(self, valueX, valueY):
+        global debug_trails
+        update = True;
+        if valueX == 0 and valueY == 0 and debug_trails:
+            update = False
+
+        global trackpad_zoom
+        valueX *= trackpad_zoom
+        valueY *= trackpad_zoom
+
+        if valueX > 32767:
+            valueX = 32767
+        elif valueX < -32767:
+            valueX = -32767
+
+        if valueY > 32767:
+            valueY = 32767
+        elif valueY < -32767:
+            valueY = -32767
+
         x_val = float(valueX - self.rangeX[0]) / float(self.rangeX[1] - self.rangeX[0])
         y_val = 1.0 - float(valueY - self.rangeY[0]) / float(self.rangeY[1] - self.rangeY[0])
 
         x_center = self.x_origin + x_val * ui_dimensions["XYPlotSize"]
         y_center = self.y_origin + y_val * ui_dimensions["XYPlotSize"]
 
-        self.canvas.coords(self.widgets['dot'], x_center - self.dot_size / 2, y_center - self.dot_size / 2, x_center + self.dot_size / 2, y_center + self.dot_size / 2)
+        if update:
+            self.canvas.itemconfig(self.widgets['dot'], outline=color_pallete[1], fill=color_pallete[3])
+        else:
+            self.canvas.itemconfig(self.widgets['dot'], outline=color_pallete[0], fill=color_pallete[0])
+
+        self.canvas.coords(self.widgets['dot'], x_center - self.dot_size / 2, y_center - self.dot_size / 2, x_center + self.dot_size / 2, y_center + self.dot_size / 2)     
 
         if self.trails_enabled:
-            self.trail_pos.append((x_center, y_center))
+            if update:
+                self.trail_pos.append((x_center, y_center))
+
             if len(self.trail_pos) == self.trail_count:
                 self.trail_pos.pop(0)
+
+
 
             for i in range(len(self.trail_pos)):
                 trail_x = self.trail_pos[i][0]
                 trail_y = self.trail_pos[i][1]
-                self.canvas.coords(self.trails[i], trail_x - self.dot_size / 4, trail_y - self.dot_size / 4, trail_x + self.dot_size / 4, trail_y + self.dot_size / 4)
 
+                self.canvas.coords(self.trails[i], trail_x - self.dot_size / 4, trail_y - self.dot_size / 4, trail_x + self.dot_size / 4, trail_y + self.dot_size / 4)
 
 
     def get_size(self):
@@ -1797,7 +1904,7 @@ class XYPlotWithTextAndLabel:
             self.xyplot.add_reference_line(line_eq)
 
 class XYPlotGroup:
-    def __init__(self, canvas, title, labels, ranges=None, trigger_limits=None, xform_funcs=None, line_eqs=None, trails=False):
+    def __init__(self, canvas, title, labels, ranges=None, trigger_limits=None, xform_funcs=None, line_eqs=None, trails=True):
         self.canvas = canvas
         self.x_origin = 0
         self.y_origin = 0

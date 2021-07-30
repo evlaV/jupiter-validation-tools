@@ -8,13 +8,12 @@ from tkinter import Text
 import logging
 from time import sleep
 
-
 from ui import UIRoot
 from  controller_if import ControllerInterface
 from valve_message_handler import ValveMessageHandler
 
-__version__ = "$Revision: #32 $"
-__date__ = "$DateTime: 2021/02/08 09:42:51 $"
+__version__ = "$Revision: #47 $"
+__date__ = "$DateTime: 2021/07/30 11:04:00 $"
 
 color_pallete = [
     "#b3ffe0", # bg
@@ -32,6 +31,7 @@ debug_mode = False
 max_dev_num = 3
 dev_num = 1
 
+
 # Device endpoint filter lists (Name, (VID, PID))
 ep_lists = (
     (
@@ -41,6 +41,7 @@ ep_lists = (
             (0x28DE, 0x1201),	#headcrab
             (0x28DE, 0x1203),	#Win: Steampal Neptune
             (0x28DE, 0x1204),	#Win: Steampal D21 / Jupiter
+            (0x28DE, 0x1205),	#Win: Jupiter2
         )
     ),
     (
@@ -94,79 +95,77 @@ Version:
   jupiter_realtime_status:
     %s - %s
 
-Hotkeys:
-
- TESTING
-
  LOGGING
-  l\tenable logging
-  c\tenable log compression
+  l\tEnable logging
+  c\tEnable log compression
 
  DISPLAY ACTIVITY TRIGGERING
   H\tToggle Limit Triggering
   ^d\tToggle 'Debug' Mode
+  '`'\tToggle Control Lockout
 
  USB
    m\tToggle HID Mouse / Kbd messages
    D\tCycle through trackpad debug modes (Off, L Pad, R Pad)
 
  TRACKPAD
-  u\tDecrease frame rate
-  U\tIncrease frame rate
+  u / U \tDecrease / Increase frame rate
   i\tToggle trackpad clipping
-  I\tChange Sensor IIR filter [0-5]
-  C\tChange Centroid IIR filter [0-5]
-  V\tToggle movement gating
-  +\tPerf mode (6ms frames, no freq. hopping,
-  s\tDecrease touch threshold
-  S\tIncrease touch threshold
-  o\tDecrease centroid threshold
-  O\tIncrease centroid threshold
-  /\tDecrease hysteresis
-  ?\tIncrease hysteresis
+  $ Turn off Rushmore freq hoppin (sets noise threshold to 0)
+  o / O \tDecrease / increase centroid threshold
+  / / ?\tDecrease / increase hysteresis
   a\tCalibrate trackpads
   A\tDisplay trackpad calibration (Not implemented)
-  ^\tDecrease touch frequency [0-15]. Not w FREQ_HOPPING
-  &\tIncrease touch frequency [0-15]. Not w FREQ_HOPPING
+
+ RUSHMORE CAPSENSE
+  n / N\t Decrease / increase Rushmore touch threshold
+  o / O\t Decrease / increase Rushmore no touch threshold
+  y / Y\t Decrease / increase Rushmroe noise floor (for centroid)
+  s / S\tDecrease / increase Rushmore noise threshold
+  M\t Dump Rushmore trackpad calibration data
+  ! / @\tDecrease / increase EF index left
+  ^ / %%\tDecrease / increase EF index right
+  $\t Toggle Rushmore frequency hopping
+
+ D21 CAPSENSE
+  ^ / &\tDecrease / increase touch freq [0-15]. Not w FREQ_HOPPING
   *\tToggle Frequency Hopping mode
 
  HAPTICS
-  f\tenable haptics
-  F\ttoggle haptics mode
-  w\tChange haptics on us
-  W\tChange haptics off us
-  e\tChange haptics repeat count
-  E\tChange haptics loop interval
-  y\tToggle haptic mode
+  f\tEnable haptics
+  F\tSwitch haptics Left / Right
+  w/W\tDecrease / increase haptic frequency
+  e/E\tIncrement haptics repeat count
+  z/Z\tDecrement / increment duty cycle percent
+  E\tIncrement haptics loop interval
+  L\tToggle legacy mode
+  0\tStop all haptics
+  [ / ]\tDecrease / increase DAC haptic gain (dB)
 
  IMU
   g\tIncrement IMU mode
-  G\tRun IMU calibration
+  G\tRun IMU calibration (Bosch Only)
 
  JOYSTICK
   j\tThumbstick:  Raw mode toggle
   J\tThumbstick:  Calibration (3 steps)
   ^j\tThumbstick: Cancel calibration
+  < / >\tThumbstick touch threshold up / down
 
  TRIGGER
   t\tTrigger: Raw mode toggle
   T\tTrigger: Calibration (3 steps)
   ^t\tTrigger: Cancel calibration
-  K\tTrigger:Increase threshold
-  k\tTrigger: Decrease threshold
+  k / K\tTrigger:Decrease / increase threshold
  
  PRESSURE
   p\tPressure: Raw mode toggle
   P\tPressure: Calibration (3 steps)
   ^p\tPressure: Cancel calibration
 
- WATCHDOG (UNSUPPORTED)
-  X\tTest the NXP watchdog timer 
-  R\tTest the nRF watchdog timer
-
  SYSTEM
   d\tSelect connected controllers (current limit 2)
-  v\ttoggle device type filter
+  v\tToggle device type filter
   r\trestart connection
   b\treboot connected device
   B\treboot connected device into bootloader
@@ -180,8 +179,21 @@ Hotkeys:
 def key_cb(event):
     global logger
 
+# Thumbstick Threshold
+    if event.char == '<':
+        ui_root.thumbstick_touch_threshold -= 1
+        if ui_root.thumbstick_touch_threshold < 10:
+            ui_root.thumbstick_touch_threshold = 10
+        cntrlr_mgr.set_setting(77, ui_root.thumbstick_touch_threshold )
+
+    elif event.char == '>':
+        ui_root.thumbstick_touch_threshold += 1
+        if ui_root.thumbstick_touch_threshold > 40:
+            ui_root.thumbstick_touch_threshold = 40
+        cntrlr_mgr.set_setting(77, ui_root.thumbstick_touch_threshold )
+
 # Logging
-    if event.char == 'l':
+    elif event.char == 'l':
         ui_root.set_logging_state(not ui_root.get_logging_state())
 
     elif event.char == 'c':
@@ -195,6 +207,11 @@ def key_cb(event):
         set_next_ep()
         cntrlr_mgr.set_endpoint_list(get_current_ep_list())
 
+# Control Lockout
+    elif event.char == '`':
+        ui_root.control_lockout = 1 - ui_root.control_lockout
+        cntrlr_mgr.set_control_lockouts(ui_root.control_lockout)
+
 # Debug
     elif event.char == 'D':
         ui_root.raw_trackpad_mode += 1
@@ -202,25 +219,16 @@ def key_cb(event):
             ui_root.raw_trackpad_mode = 0
         cntrlr_mgr.trackpad_set_raw_data_mode(ui_root.raw_trackpad_mode)
 
-    elif event.char == '@':
-        cntrlr_mgr.trackpad_set_raw_data_mode(0x0A)
-
 # Trackpad Calibration
     elif event.char == 'a':
         if not debug_mode: 
+            logger.info("Not allowed if not in DEBUG mode (^d)");
             return
         cntrlr_mgr.capsense_calibrate(0, 0)
         cntrlr_mgr.capsense_calibrate(1, 0)
 
     elif event.char == 'A':
-    #	logger.info(cntrlr_mgr.capsense_get_all_trackpad_cc_vals())
-        logger.info(cntrlr_mgr.capsense_get_all_thumbstick_FSC_vals())
-
-
-    elif event.char >= '0' and event.char <= '9':
-        audio_file = int(event.char)
-        logger.info('Playing file: {}'.format(audio_file) )
-        cntrlr_mgr.play_audio(audio_file)
+    	logger.info(cntrlr_mgr.capsense_get_all_thumbstick_FSC_cc_vals())
 
 # WDT (Unimplemented)
     elif event.char == 'R':
@@ -233,19 +241,47 @@ def key_cb(event):
     elif event.char == 'f':
         ui_root.set_ticking_state(not ui_root.get_ticking_state())
     elif event.char == 'F':
-        ui_root.set_tick_side(not ui_root.get_tick_side())
+        side = ui_root.get_tick_side() + 1
+        if side > 3:
+            side = 0
+   
+        ui_root.set_tick_side(side)
+
     elif event.char == 'w':
-        ui_root.increment_tick_on_us()
+        ui_root.haptic_freq -= 1
+        if ui_root.haptic_freq < 50: 
+            ui_root.haptic_freq = 50
     elif event.char == 'W':
-        ui_root.increment_tick_off_us()
+        ui_root.haptic_freq += 1
+        if ui_root.haptic_freq > 1000:
+            ui_root.haptic_freq = 1000
+
+    elif event.char == 'z':
+        ui_root.haptic_duty_percent -= 5
+        if ui_root.haptic_duty_percent < 0: 
+            ui_root.haptic_duty_percent = 0
+
+    elif event.char == 'Z':
+        ui_root.haptic_duty_percent += 5
+        if ui_root.haptic_duty_percent > 100:
+            ui_root.haptic_duty_percent = 100
+
     elif event.char == 'e':
         ui_root.increment_tick_repeat()
     elif event.char == 'E':
         ui_root.increment_tick_interval()
 
-    elif event.char == 'y':
+    elif event.char == 'L':
         ui_root.haptic_mode = 1 - ui_root.haptic_mode
         cntrlr_mgr.haptic_set_mode(ui_root.haptic_mode)
+
+    elif event.char == '0':
+        cntrlr_mgr.haptic_stop_all()
+
+    elif event.char == '1':
+        cntrlr_mgr.haptic_pulse( 1, 2000, 1000, 65000, 0)
+            
+# System Framerate
         
     elif event.char == 'u':
         ui_root.trackpad_framerate = ui_root.trackpad_framerate - 1	
@@ -255,101 +291,161 @@ def key_cb(event):
         logger.info('Setting framerate to: {}'.format(ui_root.trackpad_framerate))
         cntrlr_mgr.sys_set_framerate(ui_root.trackpad_framerate)
 
-
     elif event.char == 'U':
         ui_root.trackpad_framerate = ui_root.trackpad_framerate + 1
         logger.info('Setting framerate to: {}'.format(ui_root.trackpad_framerate))
         cntrlr_mgr.sys_set_framerate(ui_root.trackpad_framerate)
 
 # Testing
-    elif event.char == '\\':
-        cntrlr_mgr.trackpad_set_raw_data_mode(0x80)
+    elif event.char == 'M':       
+       cal =  cntrlr_mgr.rushmore_get_factory_cal(0)
+       logger.info('Factory Cal' + os.linesep + cntrlr_mgr.rushmore_cal_to_str(cal))
+
+       cal =  cntrlr_mgr.rushmore_get_factory_cal(1)
+       logger.info('Factory Cal' + os.linesep + cntrlr_mgr.rushmore_cal_to_str(cal))
+       
+       cal = cntrlr_mgr.rushmore_get_current_cal(1)
+       logger.info('Current Cal' + os.linesep + cntrlr_mgr.rushmore_cal_to_str(cal))
 
     elif event.char == ';':
-        cntrlr_mgr.haptic_pulse(1 ,1000, 1000, 2000)
+        #logger.info(cntrlr_mgr.imu_get_type())
+        #logger.info(cntrlr_mgr.imu_get_full_cal())
 
-    #	logger.info(cntrlr_mgr.get_device_info( 1 ))
-    #	cntrlr_mgr.get_device_info( 1 )
-    #	cntrlr_mgr.thumbstick_get_cal( 0 )
-    #	cntrlr_mgr.thumbstick_get_cal( 1 )
-    #	cntrlr_mgr.trigger_get_cal( 0 )
-    #    cntrlr_mgr.trigger_get_cal( 1 )
-    #	cntrlr_mgr.pressure_get_cal( 0 )
-    #    cntrlr_mgr.pressure_get_cal( 1 )
-    #	cntrlr_mgr.trackpad_get_cal( 0 )
-    #    cntrlr_mgr.trackpad_get_cal( 1 )
-    
-    elif event.char == ':':
-        cntrlr_mgr.trigger_set_cal( 0, 444, 146, 1 );
+  #      logger.info('Left:  ' + str(cntrlr_mgr.get_usage(0)))
+  #      logger.info('Right: ' + str(cntrlr_mgr.get_usage(1)))
+        #cntrlr_mgr.trackpad_set_raw_data_mode(0x4)
+        #logger.info(cntrlr_mgr.rushmore_get_z_values())
+  #      logger.info(cntrlr_mgr.imu_get_selftest_results())
+  #      logger.info(cntrlr_mgr.imu_get_full_cal())
+        #logger.info(cntrlr_mgr.imu_get_type())
+  #      cal =  cntrlr_mgr.rushmore_get_factory_cal(0)
+  #      logger.info('Side: 0' + os.linesep + cntrlr_mgr.rushmore_cal_to_str(cal))
+        
+       # cal =  cntrlr_mgr.rushmore_get_factory_cal(1)
+       # logger.info('Side: 1' + os.linesep + cntrlr_mgr.rushmore_cal_to_str(cal))
+        
 
-        cntrlr_mgr.thumbstick_set_cal( 0, 333, 554, 345, 441, 55, 666, 777, 888 )
-        cntrlr_mgr.pressure_set_cal( 1, 899, 411 )
-        cntrlr_mgr.thumbstick_set_cal( 1, 111, 222, 333, 111, 55, 666, 777, 888 )
+#        logger.info(cntrlr_mgr.get_raw_trackpad_data())
+        logger.info(cntrlr_mgr.pressure_get_cal(0))
+        logger.info(cntrlr_mgr.pressure_get_cal(1))
+        #logger.info(cntrlr_mgr.thumbstick_get_cal(0));
+        #logger.info(cntrlr_mgr.thumbstick_get_cal(1));
+        #logger.info(cntrlr_mgr.trigger_get_cal(0));
+        #logger.info(cntrlr_mgr.trigger_get_cal(1));
 
-        cntrlr_mgr.trackpad_set_cal( 0, 33, 33, 4444, 400, 4222)
-        cntrlr_mgr.persist_cal( 0, 0x08 )
-
-        cntrlr_mgr.trackpad_set_cal( 0, 22, 200, 300, 400, 500)
-        cntrlr_mgr.thumbstick_set_cal( 1, 444, 333, 222, 111, 55, 666, 777, 888 )
-
-# Trackpad Static Freq
-    elif event.char == '^':
-        ui_root.static_touch_freq = ui_root.static_touch_freq - 1
-        if ui_root.static_touch_freq < 0:
-            ui_root.static_touch_freq = 15
-        cntrlr_mgr.set_setting(72, ui_root.static_touch_freq)
-    
-    elif event.char == '&':
-        ui_root.static_touch_freq = ui_root.static_touch_freq + 1
-        if ui_root.static_touch_freq > 15:
-            ui_root.static_touch_freq = 0
-        cntrlr_mgr.set_setting(72, ui_root.static_touch_freq)
-
-    elif event.char == '*':
-        ui_root.freq_hop_mode = 1 - ui_root.freq_hop_mode
-        cntrlr_mgr.set_setting(73, ui_root.freq_hop_mode)
-
-# Trackpad Z Threshold
-    elif event.char == 's':
-        ui_root.trackpad_z_threshold = ui_root.trackpad_z_threshold - 5
-        cntrlr_mgr.trackpad_set_z_threshold(ui_root.trackpad_z_threshold)
-
-    elif event.char == 'S':
-        ui_root.trackpad_z_threshold = ui_root.trackpad_z_threshold + 5
-        cntrlr_mgr.trackpad_set_z_threshold(ui_root.trackpad_z_threshold)
-
-# Trackpad Hysteresis
+    # cntrlr_mgr.capsense_calibrate(1, 0)
     elif event.char == '/':
-        ui_root.trackpad_hysteresis = ui_root.trackpad_hysteresis - 1
-        cntrlr_mgr.trackpad_set_hysteresis(ui_root.trackpad_hysteresis)
+#        cntrlr_mgr.clear_usage(0)
+ #       logger.info(cntrlr_mgr.get_device_info(1))
+#        logger.info(cntrlr_mgr.imu_get_type())
+        cntrlr_mgr.imu_set_type(0)
 
-    elif event.char == '?':
-        ui_root.trackpad_hysteresis = ui_root.trackpad_hysteresis + 1
-        cntrlr_mgr.trackpad_set_hysteresis(ui_root.trackpad_hysteresis)
+    elif event.char == ':':
+#        cntrlr_mgr.imu_set_type(1)
+#       cntrlr_mgr.trigger_set_cal( 1, 1234, 587, 0 );
+       cntrlr_mgr.pressure_set_cal( 1, 199, 1, 1000, 0x00 )
+#        cntrlr_mgr.thumbstick_set_cal( 0, 111, 222, 333, 114, 55, 665, 777, 888 )
+      # cntrlr_mgr.trigger_set_cal( 1, 433, 136, 1 );
 
-# Trackpad Centroid Threshold
+      #  cntrlr_mgr.trackpad_set_cal( 0, 33, 33, 4444, 400, 4222)
+      #  cntrlr_mgr.trackpad_set_cal( 0, 22, 200, 300, 400, 500)
+
+    elif event.char == '"':
+ #       cntrlr_mgr.persist_cal(0, 0x17)
+ #       cntrlr_mgr.persist_cal(1, 0x17)
+#        cntrlr_mgr.persist_cal( 1, 0x04 )  #Persist Pressure
+#       cntrlr_mgr.persist_cal( 0, 0x02 )  #Persist Thumbstick
+       cntrlr_mgr.persist_cal( 1, 0x01 )  #Persist Trigger
+#       cntrlr_mgr.persist_cal( 1, 0x10 )  #Persist IMU
+
+# Touch Threshold (Rushmore)
+    elif event.char == 'n':
+        ui_root.rushmore_touch_threshold -= 10
+        if ui_root.rushmore_touch_threshold < 0:
+            ui_root.rushmore_touch_threshold = 0
+        cntrlr_mgr.set_setting(19, ui_root.rushmore_touch_threshold)
+
+    elif event.char == 'N':
+        ui_root.rushmore_touch_threshold += 10
+        if ui_root.rushmore_touch_threshold > 4000:
+            ui_root.rushmore_touch_threshold = 4000
+        cntrlr_mgr.set_setting(19, ui_root.rushmore_touch_threshold)# Rushmore Static Freq
+
+# NO Touch Threshold (Rushmore)
     elif event.char == 'o':
-        ui_root.trackpad_centroid_threshold = ui_root.trackpad_centroid_threshold - 1
-        cntrlr_mgr.trackpad_set_centroid_threshold(ui_root.trackpad_centroid_threshold)
+        ui_root.rushmore_notouch_threshold -= 10
+        if ui_root.rushmore_notouch_threshold < 0:
+            ui_root.rushmore_notouch_threshold = 0
+        cntrlr_mgr.set_setting(20, ui_root.rushmore_notouch_threshold)
 
     elif event.char == 'O':
-        ui_root.trackpad_centroid_threshold = ui_root.trackpad_centroid_threshold + 1
-        cntrlr_mgr.trackpad_set_centroid_threshold(ui_root.trackpad_centroid_threshold)
+        ui_root.rushmore_notouch_threshold += 10
+        if ui_root.rushmore_notouch_threshold > 4000:
+            ui_root.rushmore_notouch_threshold = 4000
+        cntrlr_mgr.set_setting(20, ui_root.rushmore_notouch_threshold)# Rushmore Static Freq
+
+# Rushmore Noise Floor
+    elif event.char == 'y':
+        ui_root.rushmore_noise_floor = ui_root.rushmore_noise_floor - 5
+        if (ui_root.rushmore_noise_floor < 0):
+            ui_root.rushmore_noise_floor = 0
+        cntrlr_mgr.set_setting(63, ui_root.rushmore_noise_floor )
+
+    elif event.char == 'Y':
+        ui_root.rushmore_noise_floor = ui_root.rushmore_noise_floor + 5
+        if (ui_root.rushmore_noise_floor > 300):
+            ui_root.rushmore_noise_floor = 300
+        cntrlr_mgr.set_setting(63, ui_root.rushmore_noise_floor )
+
+    elif event.char == '!':
+        ui_root.rushmore_l_ef_index = ui_root.rushmore_l_ef_index - 1
+        if ui_root.rushmore_l_ef_index < 0:
+            ui_root.rushmore_l_ef_index = 1
+        cntrlr_mgr.set_setting(72, ui_root.rushmore_l_ef_index)
+    
+    elif event.char == '@':
+        ui_root.rushmore_l_ef_index = ui_root.rushmore_l_ef_index + 1
+        if ui_root.rushmore_l_ef_index > 1:
+            ui_root.rushmore_l_ef_index = 0
+        cntrlr_mgr.set_setting(72, ui_root.rushmore_l_ef_index)
+
+    elif event.char == '^':
+        ui_root.rushmore_r_ef_index = ui_root.rushmore_r_ef_index - 1
+        if ui_root.rushmore_r_ef_index < 0:
+            ui_root.rushmore_r_ef_index = 1
+        cntrlr_mgr.set_setting(73, ui_root.rushmore_r_ef_index)
+    
+    elif event.char == '%':
+        ui_root.rushmore_r_ef_index = ui_root.rushmore_r_ef_index + 1
+        if ui_root.rushmore_r_ef_index > 1:
+            ui_root.rushmore_r_ef_index = 0
+        cntrlr_mgr.set_setting(73, ui_root.rushmore_r_ef_index)
+
+    elif event.char == '$':
+        ui_root.rushmore_freq_hopping = 1 - ui_root.rushmore_freq_hopping
+        cntrlr_mgr.set_setting(69, ui_root.rushmore_freq_hopping)
 
 
-# Trackpad Middle Out Percentage
-    elif event.char == '(':
-        ui_root.middle_out_percentage = ui_root.middle_out_percentage - 5
-        if ui_root.middle_out_percentage < 0:
-            ui_root.middle_out_percentage = 0
-        cntrlr_mgr.trackpad_set_middle_out_percentage(ui_root.middle_out_percentage)
+# Trackpad Noise Threshold
+    elif event.char == 's':
+        ui_root.rushmore_noise_threshold -= 5
+        if ui_root.rushmore_noise_threshold < 0:
+            ui_root.rushmore_noise_threshold = 0
+        cntrlr_mgr.rushmore_set_noise_threshold(ui_root.rushmore_noise_threshold)
 
-    elif event.char == ')':
-        ui_root.middle_out_percentage = ui_root.middle_out_percentage + 5
-        if ui_root.middle_out_percentage > 95:
-            ui_root.middle_out_percentage = 95
-        cntrlr_mgr.trackpad_set_middle_out_percentage(ui_root.middle_out_percentage)
+    elif event.char == 'S':
+        ui_root.rushmore_noise_threshold +=  5
+        if ui_root.rushmore_noise_threshold > 400:
+            ui_root.rushmroe_noise_threshold = 400
+        cntrlr_mgr.rushmore_set_noise_threshold(ui_root.rushmore_noise_threshold)
 
+    
+    elif event.char == '|':
+        zoom = ui_root.get_trackpad_zoom()
+        if zoom == 1:
+            ui_root.set_trackpad_zoom( 2 )
+        else:
+            ui_root.set_trackpad_zoom ( 1 )
 
 # IMU
     elif event.char == 'g':
@@ -424,6 +520,15 @@ def key_cb(event):
             step = 0
         ui_root.set_thumbstick_cal_current_step(step)
 
+# Debug display mode control
+    elif event.char == '_':
+        mode = ui_root.debug_display_mode + 1
+        if (mode > 4):
+            mode = 0
+        logger.info('Debug Mode set to: {}'.format(mode))
+        ui_root.debug_display_mode = mode
+        cntrlr_mgr.set_setting(67, mode)
+
 # System
     elif event.char == 'r':
         cntrlr_mgr.restart()
@@ -456,104 +561,66 @@ def key_cb(event):
         ui_root.trackpad_clipping = 1 - ui_root.trackpad_clipping
         cntrlr_mgr.set_setting(66, ui_root.trackpad_clipping)
 
-# Return to fast settings
-    elif event.char == '+':
-        trackpad_filt = 0x103  # Sensor IIR to 8, Centroid IIR to 0 Gate on
-        ui_root.trackpad_filtering = trackpad_filt
-        cntrlr_mgr.set_setting(65, trackpad_filt)
+## Change trackpad Sensor IIR
+#    elif event.char == 'I':
+#        sensor_iir = ui_root.get_trackpad_sensor_iir() + 1
+#        if sensor_iir > 0x5:
+#            sensor_iir = 0
+#        value = cntrlr_mgr.get_setting(65)
+#        value = value & 0xFFF0
+#        value = value | sensor_iir
 
-        ui_root.freq_hop_mode = 0
-        cntrlr_mgr.set_setting(73, ui_root.freq_hop_mode)
-        
-        ui_root.static_touch_freq = 1
-        cntrlr_mgr.set_setting(72, ui_root.static_touch_freq)
+#        ui_root.trackpad_filtering = value
+#        cntrlr_mgr.set_setting(65, value)
 
-        ui_root.static_touch_freq = 0
-        cntrlr_mgr.set_setting(72, ui_root.static_touch_freq)
+## Change trackpad Centroid IIR
+#    elif event.char == 'C':
+#        centroid_iir = ui_root.get_trackpad_centroid_iir() + 1
+#        if centroid_iir > 0x5:
+#            centroid_iir = 0
 
-        ui_root.trackpad_framerate = 6
-        cntrlr_mgr.sys_set_framerate(ui_root.trackpad_framerate)
+#        value = cntrlr_mgr.get_setting(65)
+#        value = value & 0xFF0F
+#        value = value | ( centroid_iir << 4 )
+#        ui_root.trackpad_filtering = value
+#        cntrlr_mgr.set_setting(65, value)
 
+## Toggle trackpad centroid movement gate
+#    elif event.char == 'V':
+#        gate_mode = 1 - ui_root.get_trackpad_gate_mode();
 
+#        value = cntrlr_mgr.get_setting(65)
+#        value = value & 0x0FEFF
+#        value = value | ( gate_mode << 8 )
+#        ui_root.trackpad_filtering = value
+#        cntrlr_mgr.set_setting(65, value)
 
-# Change trackpad Sensor IIR
-    elif event.char == 'I':
-        sensor_iir = ui_root.get_trackpad_sensor_iir() + 1
-        if sensor_iir > 0x5:
-            sensor_iir = 0
-        value = cntrlr_mgr.get_setting(65)
-        value = value & 0xFFF0
-        value = value | sensor_iir
+## Toggle trackpad experimental
+#    elif event.char == '#':
+#        expr =  1 + ui_root.get_trackpad_expr();
+#        if expr > 3:
+#            expr = 0
 
-        ui_root.trackpad_filtering = value
-        cntrlr_mgr.set_setting(65, value)
-
-# Change trackpad Centroid IIR
-    elif event.char == 'C':
-        centroid_iir = ui_root.get_trackpad_centroid_iir() + 1
-        if centroid_iir > 0x5:
-            centroid_iir = 0
-
-        value = cntrlr_mgr.get_setting(65)
-        value = value & 0xFF0F
-        value = value | ( centroid_iir << 4 )
-        ui_root.trackpad_filtering = value
-        cntrlr_mgr.set_setting(65, value)
-
-# Toggle trackpad centroid movement gate
-    elif event.char == 'V':
-        gate_mode = 1 - ui_root.get_trackpad_gate_mode();
-
-        value = cntrlr_mgr.get_setting(65)
-        value = value & 0x0FEFF
-        value = value | ( gate_mode << 8 )
-        ui_root.trackpad_filtering = value
-        cntrlr_mgr.set_setting(65, value)
-
-# Toggle trackpad experimental
-    elif event.char == '#':
-        expr =  1 + ui_root.get_trackpad_expr();
-        if expr > 2:
-            expr = 0
-
-        value = cntrlr_mgr.get_setting(65)
-        value = value & 0xF9FF
-        value = value | ( expr << 9 )
-        ui_root.trackpad_filtering = value
-        cntrlr_mgr.set_setting(65, value)
+#        value = cntrlr_mgr.get_setting(65)
+#        value = value & 0xF9FF
+#        value = value | ( expr << 9 )
+#        ui_root.trackpad_filtering = value
+#        cntrlr_mgr.set_setting(65, value)
 
     elif event.char == 'x':
+        # Log the temp and remain in temp mode
         logger.info(cntrlr_mgr.imu_get_temp())
+        cntrlr_mgr.set_imu_mode(32)
     
     elif event.char == '[':
-#	    cntrlr_mgr.imu_selftest()
-#		logger.info(cntrlr_mgr.thumbstick_get_cal(0))
-
-        cntrlr_mgr.trackpad_set_raw_data_mode(0x0A)
-        logger.info(cntrlr_mgr.get_raw_trackpad_data())
-        logger.info(cntrlr_mgr.get_raw_trackpad_ref()) 
-#	cntrlr_mgr.haptic_enable(1)
-#	logger.info(cntrlr_mgr.get_hwid())
-#	cntrlr_mgr.set_imu_mode(32)
-#	logger.info(cntrlr_mgr.imu_get_cal())
-#	cntrlr_mgr.print_pin_test_errors()
-#	(vid, pid ) = cntrlr_mgr.get_hid_vid_pid();
-#	cntrlr_mgr.imu_selftest()
-#	logger.info(cntrlr_mgr.capsense_get_cc_vals(0))
-#	logger.info(cntrlr_mgr.capsense_get_all_thumbstick_FSC_vals())
-#	logger.info(res)
+        ui_root.haptic_gain -= 1
+        if ui_root.haptic_gain < -24:
+            ui_root.haptic_gain = -24
 
     elif event.char == ']':
-        cntrlr_mgr.trackpad_set_raw_data_mode(0x0A)
-#        logger.info(cntrlr_mgr.imu_get_cal())
-
-#		cntrlr_mgr.capsense_calibrate(0, 0)
-    #    cntrlr_mgr.thumbstick_set_cal(0, 1500, 1500, 1100, 2300, 1500, 1500, 1100, 2200)
-    #	cntrlr_mgr.haptic_enable(2)
-
-    #	logger.info(cntrlr_mgr.imu_get_selftest_results())
-    #	cntrlr_mgr.imu_set_cal( 1, -2, 3, -4, 5, -6)
-
+        ui_root.haptic_gain += 1
+        if ui_root.haptic_gain > 0:
+            ui_root.haptic_gain = 0
 ##########################################################################################################
 ## BEGIN HELPER METHODS
 ##########################################################################################################
@@ -579,6 +646,7 @@ def toggle_debug_mode_cb(event):
     global debug_mode
     debug_mode = 1 - debug_mode
     ui_root.debug_mode = debug_mode
+#    ui_root.toggle_debug_trails()  # useful for trackpad testing, but confusing for users.
 ##########################################################################################################
 ## UI
 ##########################################################################################################
@@ -593,16 +661,20 @@ def connect_cb(hid_dev_mgr):
     # set debug usb mode
     cntrlr_mgr.set_setting(6, 0)
     cntrlr_mgr.set_imu_mode(1)
-
+    cntrlr_mgr.sys_steamwatchdog(0)
 
     # Disable Mouse mode
     cntrlr_mgr.mouse_kbd_control(mouse_kbd_on)
 
     # Enable status messages
-    cntrlr_mgr.set_setting(49, 2)		
+    cntrlr_mgr.set_setting(49, 2)
+    
+    # Tell UI that a new conjnection has occured
+    ui_root.connected()
 ##########################################################################################################
 ## MAIN ENTRY
 ##########################################################################################################
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--chinese', '-c', action='store_true', default=False)
 args = parser.parse_args()

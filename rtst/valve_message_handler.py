@@ -6,8 +6,8 @@ import logging
 import statistics
 import collections
 
-__version__ = "$Revision: #20 $"
-__date__ = "$DateTime: 2021/02/08 09:42:51 $"
+__version__ = "$Revision: #27 $"
+__date__ = "$DateTime: 2021/07/09 11:36:36 $"
 
 valve_messages = {
 
@@ -187,8 +187,8 @@ valve_messages = {
             'right_stick_y', \
             'pressure_pad_left', \
             'pressure_pad_right', \
-            'left_thumbstick_touch', \
-            'right_thumbstick_touch', 
+            'left_debug', \
+            'right_debug', 
         )
     ),
     0x0A: ("1I4B18h",
@@ -245,6 +245,13 @@ valve_messages = {
             'pad_raw_17', \
         )
     ),
+    0x0C: ("1I2B",
+        (
+            'data_last_packet_num', \
+            'rowset', \
+            'sample_count', \
+        )
+    ),
 }
 
 wireless_event_messages = ("Placeholder",
@@ -263,12 +270,18 @@ class ValveMessageHandler:
 
         self.history_index = 0
         self.len_history = 128
+        self.rushmore_raw_data = []
+        self.data_last_packet_num = 0 
 
         self.l_x_history = collections.deque(maxlen = self.len_history)
         self.l_y_history = collections.deque(maxlen = self.len_history)
         self.r_x_history = collections.deque(maxlen = self.len_history)
         self.r_y_history = collections.deque(maxlen = self.len_history)
-        
+
+        self.left_debug_history = collections.deque(maxlen = self.len_history)
+        self.right_debug_history = collections.deque(maxlen = self.len_history)
+
+
         self.l_x_history.append(0)
         self.l_y_history.append(0)
         self.r_x_history.append(0)
@@ -316,7 +329,6 @@ class ValveMessageHandler:
 
         data += b'\0' * (128 - len(data))
 
-
         # Parse the message header.
         (msg_version, msg_type, msg_length) = struct.unpack('1H2B', data[0:4])
         if msg_version != 1:
@@ -331,6 +343,7 @@ class ValveMessageHandler:
         msg_desc = valve_messages.get(msg_type)
         if not msg_desc:
             return self.last_data
+
         (msg_format, msg_field_names) = msg_desc
         msg_length = struct.calcsize(msg_format)
 
@@ -339,7 +352,7 @@ class ValveMessageHandler:
         for i in range(len(msg_field_names)):
             result[msg_field_names[i]] = read_list[i]
 
-        if msg_type == 9:
+        if msg_type == 1 or msg_type == 9:
             q0 = result['gyro_quat_w'] / 32768.
             q1 = result['gyro_quat_x'] / 32768.
             q2 = result['gyro_quat_y'] / 32768.
@@ -371,20 +384,38 @@ class ValveMessageHandler:
                 result['r_y_stdev'] = round(math.log2(statistics.stdev(self.r_y_history)+1)*10)
 
 
-#       if msg_type == 0x0A:
-#           y_raw = [ result['pad_raw_0'], result['pad_raw_1'], result['pad_raw_2'], result['pad_raw_3'], result['pad_raw_4'], result['pad_raw_5'], result['pad_raw_6'], result['pad_raw_7'] ]
-#            x_raw = [ result['pad_raw_8'], result['pad_raw_9'], result['pad_raw_10'], result['pad_raw_11'], result['pad_raw_12'], result['pad_raw_13'], result['pad_raw_14'], result['pad_raw_15'] ]
-#            result['y_raw'] = y_raw
-#            result['x_raw'] = x_raw
+            # Filter left_debug / right_debug max
+            if 'left_debug' in result:
+                self.left_debug_history.append(result['left_debug'] )
+                self.right_debug_history.append(result['right_debug'] )
 
-#		if msg_type == 0x0B:
-#			y_ref = [ result['pad_ref_0'], result['pad_ref_1'], result['pad_ref_2'], result['pad_ref_3'], result['pad_ref_4'], result['pad_ref_5'], result['pad_ref_6'], result['pad_ref_7'] ]
-#			x_ref = [ result['pad_ref_8'], result['pad_ref_9'], result['pad_ref_10'], result['pad_ref_11'], result['pad_ref_12'], result['pad_ref_13'], result['pad_ref_14'], result['pad_ref_15'] ]
-#			result['y_ref'] = y_ref
-#			result['x_ref'] = x_ref
-#			self.logger.debug('Pad: {} {:3x} {:3x} {:3x} {:3x} {:3x} {:3x} {:3x} {:3x}'.format(result['pad'], result['pad_raw_0'], result['pad_raw_1'], result['pad_raw_2'], result['pad_raw_3'], result['pad_raw_4'], result['pad_raw_5'], result['pad_raw_6'], result['pad_raw_7']))
-#			self.logger.debug('Pad: {} {:3x} {:3x} {:3x} {:3x} {:3x} {:3x} {:3x} {:3x}\n'.format(result['pad'], result['pad_raw_8'], result['pad_raw_9'], result['pad_raw_10'], result['pad_raw_11'], result['pad_raw_12'], result['pad_raw_13'], result['pad_raw_14'], result['pad_raw_15']))
+                result['left_debug'] = max(self.left_debug_history)
+                result['right_debug'] = max(self.right_debug_history)
 
+        if msg_type == 0x0C:
+            # Collect the next 24 16-bit values after the first 6 bytes.
+            offset = 6
+            values_to_collect = 24
+
+            raw_data = struct.unpack('24h',  data[offset:values_to_collect*2 + offset])
+
+            rowset = result['rowset']
+            if rowset == 0:
+                dl = result['sample_count']
+                self.data_last_packet_num = result['data_last_packet_num']
+                self.rushmore_raw_data[0:24] = raw_data
+            elif rowset == 1:
+                dl = result['sample_count']
+                if result['data_last_packet_num'] != self.data_last_packet_num:
+                    self.logger.error('Missed timing on Rushmore debug data')
+                self.rushmore_raw_data[24:48] = raw_data
+            elif rowset == 2:
+                dl = result['sample_count']
+                if result['data_last_packet_num'] != self.data_last_packet_num:
+                    self.logger.error('Missed timing on Rushmore debug data')
+                self.rushmore_raw_data[48:64] = raw_data
+
+                result['rushmore_raw_data'] = self.rushmore_raw_data[0:64]
 
         # Filter out some bad results.
         if 'battery_voltage' in result and result['battery_voltage'] == 0:

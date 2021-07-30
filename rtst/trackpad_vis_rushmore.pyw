@@ -16,25 +16,59 @@ from collections import deque
 from  controller_if import ControllerInterface
 from valve_message_handler import ValveMessageHandler
 
-canvas_size = 250
+canvas_size = 450
 
 # map val to a color string in the '#FFFFFFFF' format. val should be [0-32767]
 def get_color( val ):
-    max = 2 * 32767.0
+
+    max = 32767.0
+    red = 0
+    green = 0
+    blue = 0
 
     if val < 0:
         val = 0
     
     val = float( val )
     if val > max:
-        val = max      
-    
+        val = max
+        
+    # red
+    if val < max/2:
+        half = max/2.0
+        red = (half-val) / half
+        red *= 255
+    else:
+        half = max/2.0
+        red = (val-half) / half
+        red *= 255
+        red = 0
+        
+    # green
+    if val < max/2:
+        blue = 255
+    else:
+        half = max/2.0
+        blue = 1.0 - ( (val-half)/half ) 
+        blue *= 255
+        
+    if val < max/2:
+        half = max/2.0
+        green = 1.0 - val/half
+        green *= 255
+    else:
+        green = 0
+        
     red = val / max
     red *= 255
-    green = red
-    blue = min(red + 32, 255)
-
-    return  '#{0:02x}{1:02x}{2:02x}'.format( int(red), int(green), int(blue), width=2 )
+#    green = red
+    
+#    blue = red + 32
+#    if blue > 255:
+#        blue = 255
+        
+    string = '#{0:02x}{1:02x}{2:02x}'.format( int(red), int(green), int(blue), width=2 )
+    return string
 
 def compute_z_val( total_mag, radius ):
     curve_pts = [ 1000, 1000, 930, 840, 620, 350 ]
@@ -65,7 +99,6 @@ class TrackpadVis():
         self.trackpad = 1  # right
 
         self.last_packet_num = 0
-        self.middle_out = 4 #eights
 
         self.rank =  8
         self.num_x = self.rank
@@ -86,14 +119,31 @@ class TrackpadVis():
         self.grid_boxes = []
         self.grid_boxes.append( [] )
         self.grid_boxes.append( [] )
+ 
+        self.z_val_lines = []
+        self.z_val_lines.append( [] )
+        self.z_val_lines.append( [] )
         
-        self.vals_x_text = [[0 for x in range(self.num_x)] for y in range(self.num_pads)] 
-        self.vals_y_text = [[0 for x in range(self.num_x)] for y in range(self.num_pads)] 
+        self.z_val_dots = []
+        self.z_val_dots.append( [] )
+        self.z_val_dots.append( [] )
+        
+        self.z_val_history = []
+        self.z_val_history.append( deque() )
+        self.z_val_history.append( deque() )
+
+        #self.vals_x_text = [[0 for x in range(self.num_x)] for y in range(self.num_pads)] 
+        #self.vals_y_text = [[0 for x in range(self.num_x)] for y in range(self.num_pads)] 
         
         self.pos_history = []
         self.pos_history.append( deque() )
         self.pos_history.append( deque() )
       
+
+        self.z_min_text = {}
+        self.z_max_text = {}
+        self.z_delta_text = {}
+
         self.radius_text = {}
         self.smooth_graph_line_x = {}
         self.smooth_graph_line_y = {}
@@ -113,12 +163,10 @@ class TrackpadVis():
         self.vert_line = {}
         self.horiz_line = {}
         self.graph_canvas = {}
-        self.sensor_vals_canvas = {}
+        self.z_graph_canvas = {}
+
         self.canvas = {}
         self.logfile = None
-
-        self.last_x_vals = [0, 0, 0, 0, 0, 0, 0, 0]
-        self.last_y_vals = [0, 0, 0, 0, 0, 0, 0, 0]
 
         self.create_panel()
         self.tick_job = self.root.after( self.args.tick, self.tick )
@@ -150,8 +198,9 @@ class TrackpadVis():
 
         self.grid_frame = Tk.Frame( self.root, bg = 'black' )
         self.grid_frame.grid( row=0, column=0 )
-        
+
         self.canvas_size = canvas_size
+            
         self.total_width = self.canvas_size
         
         self.slice_width_x = self.total_width / (self.num_x+2)
@@ -161,15 +210,12 @@ class TrackpadVis():
         self.slice_width_y *= 0.95
         
         box_size = self.total_width / self.num_x
-        #############################################################################################################################
-        ## Draw left and right sides
-        #############################################################################################################################
+        
         for pad_num in range(self.num_pads):
             x_base = self.slice_width_x*2
             y_base = 10
     
-            # This divisor sets the scale.  Go figure.
-            self.graph_height = 32767
+            self.graph_height = 32767/3
             self.graph_cavnas_size = self.canvas_size
             
             self.canvas[pad_num] = Tk.Canvas( self.grid_frame,
@@ -180,11 +226,10 @@ class TrackpadVis():
             canvas = self.canvas[pad_num]
             canvas.grid( row=0, column=pad_num, padx=5, pady=5 )
         
-            #############################################################################################################################
-            ## X shaded squares
-            #############################################################################################################################
+            # Draw the X baseline values
             for x in range(self.num_x):
-                self.x_boxes[pad_num].append( canvas.create_rectangle( x_base, y_base, x_base+self.slice_width_x, y_base+self.slice_width_y, fill='white', outline='#707090' ) ) 
+                self.x_boxes[pad_num].append( canvas.create_rectangle( x_base, y_base, x_base+self.slice_width_x, y_base+self.slice_width_y, fill='white', outline='#707090' ) )
+                
                 x_base += self.slice_width_x
 
             x_base = 10
@@ -192,9 +237,7 @@ class TrackpadVis():
         
             box_size = self.total_width / self.num_y
             
-            #############################################################################################################################
-            ## Y shaded squares
-            #############################################################################################################################
+            # Draw the Y baseline values
             for y in range(self.num_y):
                 self.y_boxes[pad_num].append( canvas.create_rectangle( x_base, y_base, x_base+self.slice_width_x, y_base+self.slice_width_y, fill='white', outline='#707090' ) )
                 
@@ -204,9 +247,6 @@ class TrackpadVis():
             x_base = self.slice_width_x*2
             y_base = self.slice_width_y*2
             
-            #############################################################################################################################
-            ## X by Y grid values
-            #############################################################################################################################
             for x in range(self.num_x):
                 for y in range(self.num_y):
                     self.grid_boxes[pad_num].append( canvas.create_rectangle( x_base, y_base, x_base+self.slice_width_x, y_base+self.slice_width_y, fill='white', outline='#707090' ) )
@@ -216,13 +256,10 @@ class TrackpadVis():
                 x_base += self.slice_width_x
                 y_base = self.slice_width_y*2
 
-            x_base = 2*self.slice_width_x
-            y_base = 15 + self.slice_width_y*10
+  
 
-            #############################################################################################################################
-            ## Lines and fill polygons for X, Y values
-            #############################################################################################################################            
             #draw a line graph of each axis
+            vals = ( 0, 0, 0, 3100, 5414, 5708, 1118, 0, 0, 0, 0, 0, 0 )
             vert_list = []
             self.graph_canvas[pad_num] = Tk.Canvas(self.grid_frame,
                                                    height=self.graph_cavnas_size,
@@ -234,6 +271,7 @@ class TrackpadVis():
             
             graph_canvas.create_rectangle( 0, 0, self.canvas_size, self.canvas_size, fill='#171737' )
             
+
             # add verts to the polygon, include two extras to close the poly back around at 0
             for i in range( self.num_x + 2 ):
                 vert_list.append( (0, 0 ) )
@@ -261,43 +299,61 @@ class TrackpadVis():
 
             self.pos_dot[pad_num] = graph_canvas.create_oval( 0, 0, 0, 0, fill='#404040', outline='#a0a0c0', width=2)
 
-
-            #############################################################################################################################
-            ## NEXT
-            #############################################################################################################################
-
-            self.sensor_vals_canvas[pad_num] = Tk.Canvas(self.grid_frame,
+            # Create real-time Z value plots
+            self.z_graph_canvas[pad_num] = Tk.Canvas(self.grid_frame,
                                                      height=self.graph_cavnas_size,
                                                      width=self.graph_cavnas_size,
                                                      bg='#171737', bd=-2,
                                                      highlightthickness=0)
-            vals_canvas = self.sensor_vals_canvas[pad_num]
-            vals_canvas.grid( row=2, column=pad_num, padx=5, pady=5 )
+            z_graph_canvas = self.z_graph_canvas[pad_num]
+            z_graph_canvas.grid( row=2, column=pad_num, padx=5, pady=5 )
             
-            vals_canvas.create_rectangle( 0, 0, self.canvas_size, self.canvas_size, fill='#202040' )
+            z_graph_canvas.create_rectangle( 0, 0, self.canvas_size, self.canvas_size, fill='#202040' )
+            
+            self.z_val_line_count = 40
+            self.z_val_dot_radius = 3
+            self.z_val_graph_max = 80000
+            self.z_val_graph_min = -20000
+            self.z_val_graph_range = self.z_val_graph_max - self.z_val_graph_min
+            self.z_val_tick_count = 10
+            
+            self.z_val_on = (-200, -2000) # left,right
+            self.z_val_off = (-2100, -2100) # left,right
 
-            x_delta = 20
-            y_delta = 20
-            for i in range(self.num_x):
-                vals_canvas.create_text( 60 + i * x_delta, 20, justify=Tk.LEFT, text='X{}'.format(i), fill='#707090')
-                self.vals_x_text[pad_num][i] = vals_canvas.create_text( 60 + i*x_delta, 35, justify=Tk.LEFT, text="00", fill='#707090') 
+            for i in range( self.z_val_line_count ):
+                self.z_val_lines[pad_num].append( z_graph_canvas.create_line( ( (-100,0), (-100,0) ), fill='#707090', width=3 ) )
+                self.z_val_dots[pad_num].append( z_graph_canvas.create_oval( -100, 0, -100, 0, fill='#404040', outline='#707090', width=2 ) )
+                
+            for i in range( self.z_val_tick_count ):
+                text = "{0}".format( int( self.z_val_graph_min + (i/float(self.z_val_tick_count)) * self.z_val_graph_range ) )
+                x = self.canvas_size/2
+                y = self.canvas_size - self.canvas_size*(float(i)/self.z_val_tick_count)
+                gap = 20
+                z_graph_canvas.create_text( x, y, justify=Tk.CENTER, text=text, fill='#707090') 
+                z_graph_canvas.create_line( 0, y, x-gap, y, fill='#a0a0c0', width=1, dash=(3, 8) )
+                z_graph_canvas.create_line( x+gap, y, self.canvas_size, y, fill='#a0a0c0', width=1, dash=(3, 8) )
 
-                vals_canvas.create_text( 30, 60 + i * y_delta, justify=Tk.LEFT, text='Y{}'.format(i), fill='#707090')
-                self.vals_y_text[pad_num][i] = vals_canvas.create_text( 50, 60 + i*y_delta, justify=Tk.LEFT, text="00", fill='#707090') 
+            # draw the Z on and off lines
+            x = self.canvas_size/2
+            y = (float(self.z_val_on[pad_num])-self.z_val_graph_min) / self.z_val_graph_range
+            y = self.canvas_size - self.canvas_size*y
+            z_graph_canvas.create_line( 0, y, self.canvas_size, y, fill='#a0a0c0', width=3 )
 
+            y = (float(self.z_val_off[pad_num])-self.z_val_graph_min) / self.z_val_graph_range
+            y = self.canvas_size - self.canvas_size*y
+            z_graph_canvas.create_line( 0, y, self.canvas_size, y, fill='#a0a0c0', width=3 )
+
+                
+            self.z_max_text[pad_num] = z_graph_canvas.create_text( 20, 10, justify=Tk.LEFT, text="max", fill='#707090') 
+            self.z_min_text[pad_num] = z_graph_canvas.create_text( 80, 10, justify=Tk.LEFT, text="max", fill='#707090') 
+            self.z_delta_text[pad_num] = z_graph_canvas.create_text( 140, 10, justify=Tk.LEFT, text="max", fill='#707090') 
+            self.radius_text[pad_num] = z_graph_canvas.create_text( 200, 10, justify=Tk.LEFT, text="radius", fill='#707090')
     def weighted_average(self, vals):
         div = np.sum(vals)*(len(vals) - 1)
         if div == 0:
             return 0.0
         
         return sum([vals[i]*i for i in range(len(vals))]) / div
-
-    def draw_grid(self, pad_num, raw_x_values, raw_y_values):
-        for i in range(len(self.grid_boxes[pad_num])):
-            box = self.grid_boxes[pad_num][i]
-          
-            val = raw_x_values[int( i/ self.rank)] * raw_y_values[i % self.rank]
-            self.canvas[pad_num].itemconfig(box, fill=get_color(val*40))
 
     def rescale_value(self, val, min_val, max_val):
         if val <= min_val:
@@ -324,58 +380,156 @@ class TrackpadVis():
    #     self.logfile.write('x_pos, {0}, y_pos, {1}, radius, {2}, '.format(self.x_pos, self.y_pos, self.radius))
         self.logfile.write('\n')
 
-    def compute_pos(self, pad_num):
-
-        x_val = self.rescale_value(self.weighted_average(self.x_vals), .01, .99)
-        y_val = self.rescale_value(self.weighted_average(self.y_vals), .01, .99)
-        
-        self.x_pos = 2.0*(x_val - 0.5)*32767.0
-        self.y_pos = 2.0*(y_val - 0.5)*32767.0
-        
-        self.raw_z_val = np.sum(self.x_vals) + np.sum(self.y_vals)
-
-        self.radius = math.sqrt(self.x_pos**2 + self.y_pos**2)
-
-  #      self.log_trackpads();
-
-    def draw_collapsed_xy(self, pad_num):
-        # draw the collapsed X and Y boxes in the top graph
-        for i in range(self.num_x):
-            box = self.x_boxes[pad_num][i]
-            self.canvas[pad_num].itemconfig(box, fill=get_color(self.x_vals[i]*8))
-        for i in range( self.num_y ):
-            box = self.y_boxes[pad_num][i]
-            self.canvas[pad_num].itemconfig(box, fill=get_color(self.y_vals[i]*8))
-
-    def draw_pos_dot(self, pad_num):
-        if self.finger_down[pad_num]:
-            canvas_x_pos = (self.x_pos/(2.0*32767.0)+0.5) * self.graph_cavnas_size
-            canvas_y_pos = (self.y_pos/(2.0*32767.0)+0.5) * self.graph_cavnas_size
-
-            self.graph_canvas[pad_num].coords( self.vert_line[pad_num], ( canvas_x_pos, 0, canvas_x_pos, self.graph_cavnas_size ) )
-            self.graph_canvas[pad_num].coords( self.horiz_line[pad_num], ( 0, canvas_y_pos, self.graph_cavnas_size, canvas_y_pos ) )
-
-            dot_size = 5
-
-            self.graph_canvas[pad_num].coords( self.pos_dot[pad_num], canvas_x_pos-dot_size, canvas_y_pos-dot_size, canvas_x_pos+dot_size, canvas_y_pos+dot_size )
-
-        else:
-            self.graph_canvas[pad_num].coords( self.pos_dot[pad_num], -100, 0, -100, 0 )
-            self.graph_canvas[pad_num].coords( self.horiz_line[pad_num], -100, 0, -100, 0 )
-            self.graph_canvas[pad_num].coords( self.vert_line[pad_num], -100, 0, -100, 0 )
-
     def get_index_position(self, index, num_vals):
         return (float(index)/num_vals)*self.graph_cavnas_size #+ (self.graph_cavnas_size/num_vals)/2
 
     def calc_index(self, pos, num_vals):
         return math.floor((pos/self.graph_cavnas_size)*num_vals)
 
-    def draw_line_graphs(self, pad_num, x_vals, y_vals):
+    ################################################################################################
+    ## Computes
+    ################################################################################################
+    def compute_z_corrected_val(self, pad_num, raw_values):
+        total_mag_thresh = 1000
+
+        if self.total_mag < total_mag_thresh:
+            self.corrected_z_val = -10000
+        else:
+
+            curve_pts = [ 1000, 1000, 950, 825, 550, 175 ]
+            max_total_mag = 20000
+            correction_vals = map( lambda x: max_total_mag*(x/1000.0), curve_pts )
+
+            num_steps = 5
+            max_radius = 32767
+            radius_per_step = float( max_radius/num_steps )
+
+            for i in range(num_steps):
+                if (i+1) * radius_per_step > self.radius:
+                    break
+
+            #print "slice: ", radius / radius_per_step, " percent: ", total_mag/float(max_total_mag)
+
+            # lerp the correction
+            t = (self.radius-(i*radius_per_step)) / radius_per_step
+
+            clist = list(correction_vals)
+            correction = clist[i] + t*(clist[i+1] - clist[i])
+
+            self.corrected_z_val = self.total_mag - correction
+
+            #print "radius: ", self.radius, "correction:", correction, "total_mag:", self.total_mag
+
+        # keep a history of the last few z values so we can graph them 
+        self.z_val_history[pad_num].append(self.corrected_z_val)
+        if len(self.z_val_history[pad_num]) > self.z_val_line_count:
+            self.z_val_history[pad_num].popleft()
+
+    def compute_finger_down(self, pad_num, raw_values):
+
+        max_cell = max( raw_values )
+
+        #print "max_cell:",max_cell
+
+        baseline_thresh = 1200
+        hyst = 100
+
+        release_thresh = baseline_thresh - hyst
+        press_thresh = baseline_thresh + hyst
+
+        radius_comp_max = 500
+        radius_comp = radius_comp_max * self.radius / 32767.0
+
+        max_cell = max_cell + radius_comp
+
+        if self.finger_down[pad_num]:
+            if max_cell < release_thresh:
+                self.finger_down[pad_num] = False
+        else:
+            if max_cell > press_thresh:
+                self.finger_down[pad_num] = True
+
+        if self.finger_down[pad_num]:
+            if self.corrected_z_val < self.z_val_off[pad_num]:
+                self.finger_down[pad_num] = False
+        else:
+            if self.corrected_z_val > self.z_val_on[pad_num]:
+                self.finger_down[pad_num] = True
+
+    def compute_collapsed_values(self, pad_num, raw_values):
         # Zero values below threshold
-        x_vals = x_vals*(x_vals >= 0)
-        y_vals = y_vals*(y_vals >= 0)
+        vals = raw_values*(raw_values >= self.min_cell_z_value)
         
-         # Update the X graph
+        # Reshape into (num_x, num_y) 2D array.
+        vals = vals.reshape([self.num_x, self.num_y])
+        
+        self.x_vals = np.sum(vals, axis=1)
+        self.y_vals = np.sum(vals, axis=0)
+
+    def compute_pos(self, pad_num, raw_values):
+
+        x_val = self.rescale_value(self.weighted_average(self.x_vals), .05, .95)
+        y_val = self.rescale_value(self.weighted_average(self.y_vals), .1, .9)
+        
+
+        self.x_pos = 2.0*(x_val - 0.5)*32767.0
+        self.y_pos = 2.0*(y_val - 0.5)*32767.0
+        
+        self.raw_z_val = np.sum(self.x_vals) + np.sum(self.y_vals)
+        self.radius = math.sqrt(self.x_pos**2 + self.y_pos**2)
+#        self.log_trackpads();
+
+
+        #if pad_num==1:
+        #    print self.raw_z_val, self.radius
+
+    def compute_total_mag(self, pad_num, raw_values):
+        self.total_mag = np.sum(self.x_vals) + np.sum(self.y_vals)
+
+    ################################################################################################
+    ## Drawing
+    ################################################################################################
+    def draw_z_history_text(self, pad_num, raw_values):
+
+  
+        if (len(self.z_val_history[pad_num])):
+            maxz = max(self.z_val_history[pad_num])
+            minz = min(self.z_val_history[pad_num])
+            self.z_graph_canvas[pad_num].itemconfig(self.z_max_text[pad_num] , text=int(maxz))	
+            self.z_graph_canvas[pad_num].itemconfig(self.z_min_text[pad_num] , text=int(minz))
+            self.z_graph_canvas[pad_num].itemconfig( self.z_delta_text[pad_num] , text="[{0}]".format( int(maxz-minz) ) )
+            self.z_graph_canvas[pad_num].itemconfig( self.radius_text[pad_num] , text="[{0}]".format( int(self.radius) ) )
+
+    def draw_z_history_graph(self, pad_num, raw_values):
+        # update the z_value graph dots and lines
+        if self.finger_down[pad_num]:
+            z_val_base = self.z_val_off[pad_num]
+        else:
+            z_val_base = self.z_val_on[pad_num]
+
+        for i in range( len( self.z_val_history[pad_num] ) ):
+            z = self.z_val_history[pad_num][i]
+            x = i*self.graph_cavnas_size/float( len( self.z_val_lines[pad_num] ) )
+            y_stop = (z-self.z_val_graph_min)/self.z_val_graph_range
+            y_stop = self.graph_cavnas_size - self.graph_cavnas_size*y_stop
+
+            y_start = (float(z_val_base)-self.z_val_graph_min)/self.z_val_graph_range
+            y_start = self.graph_cavnas_size - self.graph_cavnas_size*y_start
+
+            self.z_graph_canvas[pad_num].coords( self.z_val_lines[pad_num][i], x, y_start, x, y_stop )
+            self.z_graph_canvas[pad_num].coords( self.z_val_dots[pad_num][i], x-self.z_val_dot_radius, y_stop-self.z_val_dot_radius, x+self.z_val_dot_radius, y_stop+self.z_val_dot_radius )
+
+    def draw_line_graphs(self, pad_num, raw_values):
+        # Zero values below threshold
+        vals = raw_values*(raw_values >= self.min_cell_z_value)
+        
+        # Reshape into (num_x, num_y) 2D array.
+        vals = vals.reshape([self.num_x, self.num_y])
+        
+        x_vals = np.sum(vals, axis=1)
+        y_vals = np.sum(vals, axis=0)
+
+        # Update the X graph
         vert_list = []
         for i in range( len( x_vals ) ):
             val = x_vals[i]
@@ -399,78 +553,37 @@ class TrackpadVis():
         vert_list.append( 0 )
         self.graph_canvas[pad_num].coords( self.graph_line_y[pad_num], Tk._flatten( vert_list ) )
 
-    def compute_z_corrected_val(self, pad_num):
-
-        total_mag_thresh = 1000
-
-        if self.total_mag < total_mag_thresh:
-            self.corrected_z_val = -10000
-        else:
-            self.corrected_z_val = self.total_mag
-
-
-            #curve_pts = [ 1000, 1000, 950, 825, 550, 175 ]
-            #max_total_mag = 20000
-            #correction_vals = map( lambda x: max_total_mag*(x/1000.0), curve_pts )
-
-            #num_steps = 5
-            #max_radius = 32767
-            #radius_per_step = float( max_radius/num_steps )
-
-            #for i in range(num_steps):
-            #    if (i+1) * radius_per_step > self.radius:
-            #        break
-
-            ##print "slice: ", radius / radius_per_step, " percent: ", total_mag/float(max_total_mag)
-
-            ## lerp the correction
-            #t = (self.radius-(i*radius_per_step)) / radius_per_step
-
-            #correction = correction_vals[i] + t*(correction_vals[i+1] - correction_vals[i])
-
-            #self.corrected_z_val = self.total_mag # - correction
-
-            #print "radius: ", self.radius, "correction:", correction, "total_mag:", self.total_mag
-
-        # keep a history of the last few z values so we can graph them 
-        self.z_val_history[pad_num].append(self.corrected_z_val)
-        if len(self.z_val_history[pad_num]) > self.z_val_line_count:
-            self.z_val_history[pad_num].popleft()
-
-    def compute_finger_down(self, pad_num, raw_x_values, raw_y_values):
-
-        if np.sum(raw_x_values) + np.sum(raw_y_values) > 60:
-            self.finger_down[pad_num] = True
-        else:
-            self.finger_down[pad_num] = False
-        return
-
-    def compute_total_mag(self, pad_num):
-        self.total_mag = np.sum(self.x_vals) + np.sum(self.y_vals)
-
-    def draw_vals_text(self, pad_num, raw_x_values, raw_y_values):
-        for i in range( self.num_x ):
-            self.sensor_vals_canvas[pad_num].itemconfig(self.vals_x_text[pad_num][i], text = int(raw_x_values[i]))
-            self.sensor_vals_canvas[pad_num].itemconfig(self.vals_y_text[pad_num][i], text = int(raw_y_values[i]))
-
-    def draw_z_history_graph(self, pad_num, raw_values):
-        # update the z_value graph dots and lines
+    def draw_pos_dot(self, pad_num, raw_values):
         if self.finger_down[pad_num]:
-            z_val_base = self.z_val_off[pad_num]
+            canvas_x_pos = (self.x_pos/(2.0*32767.0)+0.5) * self.graph_cavnas_size
+            canvas_y_pos = (self.y_pos/(2.0*32767.0)+0.5) * self.graph_cavnas_size
+
+            self.graph_canvas[pad_num].coords( self.vert_line[pad_num], ( canvas_x_pos, 0, canvas_x_pos, self.graph_cavnas_size ) )
+            self.graph_canvas[pad_num].coords( self.horiz_line[pad_num], ( 0, canvas_y_pos, self.graph_cavnas_size, canvas_y_pos ) )
+
+            dot_size = 5
+
+            self.graph_canvas[pad_num].coords( self.pos_dot[pad_num], canvas_x_pos-dot_size, canvas_y_pos-dot_size, canvas_x_pos+dot_size, canvas_y_pos+dot_size )
+
         else:
-            z_val_base = self.z_val_on[pad_num]
+            self.graph_canvas[pad_num].coords( self.pos_dot[pad_num], -100, 0, -100, 0 )
+            self.graph_canvas[pad_num].coords( self.horiz_line[pad_num], -100, 0, -100, 0 )
+            self.graph_canvas[pad_num].coords( self.vert_line[pad_num], -100, 0, -100, 0 )
 
-        for i in range( len( self.z_val_history[pad_num] ) ):
-            z = self.z_val_history[pad_num][i]
-            x = i*self.graph_cavnas_size/float( len( self.z_val_lines[pad_num] ) )
-            y_stop = (z-self.z_val_graph_min)/self.z_val_graph_range
-            y_stop = self.graph_cavnas_size - self.graph_cavnas_size*y_stop
-
-            y_start = (float(z_val_base)-self.z_val_graph_min)/self.z_val_graph_range
-            y_start = self.graph_cavnas_size - self.graph_cavnas_size*y_start
-
-            self.z_graph_canvas[pad_num].coords( self.z_val_lines[pad_num][i], x, y_start, x, y_stop )
-            self.z_graph_canvas[pad_num].coords( self.z_val_dots[pad_num][i], x-self.z_val_dot_radius, y_stop-self.z_val_dot_radius, x+self.z_val_dot_radius, y_stop+self.z_val_dot_radius )
+    def draw_collapsed_xy(self, pad_num, raw_values):
+        # draw the collapsed X and Y boxes in the top graph
+        for i in range(self.num_x):
+            box = self.x_boxes[pad_num][i]
+            self.canvas[pad_num].itemconfig(box, fill=get_color(self.x_vals[i]*8))
+        for i in range( self.num_y ):
+            box = self.y_boxes[pad_num][i]
+            self.canvas[pad_num].itemconfig(box, fill=get_color(self.y_vals[i]*8))
+ 
+    def draw_grid(self, pad_num, raw_values):
+        for i in range(len(self.grid_boxes[pad_num])):
+            box = self.grid_boxes[pad_num][i]
+            val = raw_values[i]
+            self.canvas[pad_num].itemconfig(box, fill=get_color(val*40))
 
     def draw_row_column_centroids(self, pad_num, vals):
         # Zero values below threshold
@@ -555,7 +668,6 @@ class TrackpadVis():
                     if not pry:
                         v = [(yi-1)*pryz, yi*vals[xi][yi]]
                         points.append([xi, yi - 1 + self.weighted_average(v)])
-
     ############################################################################################################
     ## Main Tick
     ############################################################################################################
@@ -564,88 +676,45 @@ class TrackpadVis():
             for pad_num in range(self.num_pads):
                 device_data = self.cntrlr_mgr.get_data()
 
-                if not ('pad_raw_0') in device_data:
+                if not ('rushmore_raw_data') in device_data:
                     continue
 
-                # Values .
-                raw_x_values = np.array( [device_data['pad_raw_%d' % (i)] for i in range(0,  self.rank, 1)],  dtype=np.float32)
-                raw_y_values = np.array( [device_data['pad_raw_%d' % (i)] for i in range(self.rank, 2 *self.rank, 1)],  dtype=np.float32)
-
+                # Values come in reversed.
+                raw_values = np.array( device_data['rushmore_raw_data'], dtype=np.float32)
+                raw_values = raw_values[::-1]
                 if self.logfile:
-                    packet_num = device_data['last_packet_num']
-                    if packet_num != self.last_packet_num:
-    #                   self.logfile.write( 'raw_vals, ' )
-                        self.logfile.write( '{0}, '.format(device_data['last_packet_num']) )
-                        for val in raw_x_values:
-                            self.logfile.write( '{0}, '.format( val ) )  
-                        for val in raw_y_values:
-                            self.logfile.write( '{0}, '.format( val ) )
+                    self.logfile.write( 'raw_vals, ' )
+            
+                    for val in raw_values:
+                        self.logfile.write( '{0}, '.format( val ) )
 
-                        self.logfile.write('\n')
                     self.last_packet_num = packet_num
                     self.tick_job = self.root.after( self.args.tick, self.tick )        
                     return
 
-                avg_x = np.sum(raw_x_values) / self.num_x
-                avg_y = np.sum(raw_y_values) / self.num_y
+            self.compute_collapsed_values(pad_num, raw_values)
+            self.compute_total_mag(pad_num, raw_values)
+            self.compute_pos(pad_num, raw_values)
+            self.compute_z_corrected_val(pad_num, raw_values)
 
-                raw_x_values = np.subtract(raw_x_values, avg_x * self.middle_out / 8 )
-                raw_y_values = np.subtract(raw_y_values, avg_y * self.middle_out / 8 )
+            self.compute_finger_down(pad_num, raw_values)
+            
 
-                centroid_threshold = 11 
+            ## Drawing
+            self.draw_grid(pad_num, raw_values)
+            self.draw_collapsed_xy(pad_num, raw_values)
+            self.draw_pos_dot(pad_num, raw_values)
+            self.draw_line_graphs(pad_num, raw_values)
+            self.draw_z_history_text(pad_num, raw_values)
+            self.draw_z_history_graph(pad_num, raw_values)
 
-                raw_x_values[raw_x_values < centroid_threshold] = 0
-                raw_y_values[raw_y_values < centroid_threshold] = 0
-
-                for i in range(0, self.rank, 1):
-                    raw_x_values[i] = ((self.rank - 1) * self.last_x_vals[i] + raw_x_values[i]) / self.rank
-                    raw_y_values[i] = ((self.rank - 1) * self.last_y_vals[i] + raw_y_values[i]) / self.rank
-
-                    self.last_x_vals[i] = raw_x_values[i];
-                    self.last_y_vals[i] = raw_y_values[i];
-
-
-                self.x_vals = raw_x_values * 256
-                self.y_vals = raw_y_values * 256
-
-   
-                self.compute_total_mag(pad_num)
-                self.compute_pos(pad_num)
-                self.compute_finger_down(pad_num, raw_x_values, raw_y_values)
-            # Drawing
-                self.draw_grid(pad_num, raw_x_values, raw_y_values)
-                self.draw_collapsed_xy(pad_num)
-                self.draw_pos_dot(pad_num)
-                self.draw_line_graphs(pad_num, self.x_vals, self.y_vals)
-
-
-                self.draw_vals_text(pad_num, raw_x_values, raw_y_values)
-            #   if self.logfile:
-            #       self.logfile.write( '\n' )
-                                        
+                                      
         self.tick_job = self.root.after( self.args.tick, self.tick )        
 
 def key_cb( event ):
-    if event.char == 'm':
-        vioos.args.mode += 1
-        if vioos.args.mode > 2:
-            vioos.args.mode = 0
-
-        cntrlr_mgr.set_setting( 6, 4 + vioos.args.mode )
-
-        for l in vioos.prev_x_values:
-            del l[:]
-        for l in vioos.prev_y_values:
-            del l[:]
-        for l in vioos.prev_raw_values:
-            del l[:]
-    elif event.char == 'a':
+    if event.char == 'a':
         cntrlr_mgr.capsense_calibrate_trackpad(0)
         cntrlr_mgr.capsense_calibrate_trackpad(1)
-    elif event.char == 'o':
-        vioos.middle_out = vioos.middle_out + 1
-        if vioos.middle_out >= 8:
-            vioos.middle_out = 0
     elif event.char == 'l':
         vioos.set_logging_state(not vioos.get_logging_state())
     elif event.char == 'r':
@@ -662,13 +731,14 @@ def connect_cb(hid_dev_mgr):
 
     # set debug usb mode
     cntrlr_mgr.set_setting(6, 0)
-    cntrlr_mgr.set_imu_mode(1)
+    # Turn off IMU
+    cntrlr_mgr.set_imu_mode(0)
 
     #Lower Frame rate
-    cntrlr_mgr.sys_set_framerate(12)
+    cntrlr_mgr.sys_set_framerate(8)
 
-    # Enable right trackpad data
-    cntrlr_mgr.trackpad_set_raw_data_mode(2)
+    # Enable raw data for Rushmore on right trackpad
+    cntrlr_mgr.trackpad_set_raw_data_mode(4)
 
     # Enable status messages
     cntrlr_mgr.set_setting(49, 2)	
@@ -682,6 +752,7 @@ ep_lists = (
             (0x28DE, 0x1201),	#headcrab
             (0x28DE, 0x1203),	#Win: Steampal Neptune
             (0x28DE, 0x1204),	#Win: Steampal D21 / Jupiter
+            (0x28DE, 0x1205),	#Win: Steampal D21 / Jupiter2
         )
     ),
     (
@@ -726,29 +797,14 @@ root.wm_title("Valve Test")
 parser = argparse.ArgumentParser(description='Valve Controller Trackpad Visualizer')
 parser.add_argument('-m', '--mode', type=int, default=0,
                     help='The mode to execute (Default: 0)')
-parser.add_argument('-t', '--tick', type=int, default=1,
+parser.add_argument('-t', '--tick', type=int, default=8,
                     help='The tick rate in ms (Default: 1)')
 parser.add_argument('-v', '--verbose', action='store_true', default=False,
                     help='Log debug information to console')
 args = parser.parse_args()
 
-def SetDebugMode( cntrlr_mgr ):
-    global args
-    
-    # set debug usb mode
-    cntrlr_mgr.set_setting( 6, 6 )
-
-    # remove all the default mappings
-    cntrlr_mgr.clear_mappings()
-
-    # set both pads to 'none' mode
-    cntrlr_mgr.set_pad_mode( 'left', 7 )
-
-    # set both pads to 'none' mode
-    cntrlr_mgr.set_pad_mode( 'right', 7 )
-
 cntrlr_mgr = ControllerInterface( ep_lists[0][1], connect_cb)
-
+logger.info("Awaiting connection")
 top_frame = Tk.Frame( root, width=canvas_size*2, height=canvas_size*4, bg = 'black' )
 top_frame.pack_propagate(0)
 top_frame.pack( side = Tk.TOP )
@@ -756,7 +812,6 @@ top_frame.pack( side = Tk.TOP )
 vioos = TrackpadVis( top_frame, cntrlr_mgr, args )
 
 root.bind("<Key>", key_cb)
-
 Tk.mainloop()
 
 cntrlr_mgr.shutdown()

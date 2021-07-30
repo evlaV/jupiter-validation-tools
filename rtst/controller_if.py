@@ -2,6 +2,7 @@ import hid
 import struct
 import logging
 import math
+import os
 from time import sleep
 
 logger = logging.getLogger('RTST.CNTRLR')
@@ -9,8 +10,8 @@ logger = logging.getLogger('RTST.CNTRLR')
 from hid_dev_mgr import HidDeviceManager
 from valve_message_handler import ValveMessageHandler
 
-__version__ = "$Revision: #18 $"
-__date__ = "$DateTime: 2021/02/08 09:42:51 $"
+__version__ = "$Revision: #29 $"
+__date__ = "$DateTime: 2021/07/30 11:04:00 $"
 
 class ControllerInterface:
 
@@ -74,15 +75,30 @@ class ControllerInterface:
     def mouse_kbd_control(self, on):
         self.set_setting(9, on)
 
+    # Enable / disable control lockouts
+    def set_control_lockouts(self, on):
+        self.set_setting(75, on)
+
     # Set the system framerate
     def sys_set_framerate(self, framerate):
          self.set_setting(64, framerate)
+
+    # Enable / Disable Steam Watchdog (Will reset default settings after 10s if no Steam)
+    def sys_steamwatchdog(self, on):
+        self.set_setting(71, on)
 
     # WDT Stuff (Not supported -- DO NOT USE)
     def test_nrf_watchdog(self):
         feature_report_type = 0xd4
         report_bytes = struct.pack('')
         self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
+
+    ##########################################################################################################
+    ## Get Timestamp
+    ##########################################################################################################
+    def get_last_packet_num (self):
+        data = self.get_data()
+        return ( data.get('last_packet_num'))
 
     ##########################################################################################################
     ## Haptic 
@@ -94,25 +110,26 @@ class ControllerInterface:
         self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
 
     # Haptic Pulse - Generate a legacy haptic pulse train
-    def haptic_pulse(self, side, on_us=1000, off_us=100, repeat_count=0):
+    def haptic_pulse(self, side, on_us=1000, off_us=100, repeat_count=0, dBgain=0):
         if self.hid_dev_mgr.is_open():
             feature_report_type = 143
 
-            if side > 1:
+            if side > 2:
                 return
 
             if side == 0:
-                left_or_right = 1
-            else:
-                left_or_right = 0
+                side = 1
+            elif side == 1:
+                side = 0
 
-            report_bytes = struct.pack('=BHHH', left_or_right,	on_us, off_us, repeat_count)
+
+            report_bytes = struct.pack('=BHHHh', side, on_us, off_us, repeat_count, dBgain)
             self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
 
     # Stop all Haptic output
     def haptic_stop_all(self):
-        self.haptic_pulse(0, 0, 0, 0)
-        self.haptic_pulse(1, 0, 0, 0)
+        self.haptic_pulse(0, 0, 0, 0, 0)
+        self.haptic_pulse(1, 0, 0, 0, 0 )
 
     
     # Haptic enabnle: 0 = Off, 1 = On, 2 = Only via USB API
@@ -121,13 +138,11 @@ class ControllerInterface:
     
     ##########################################################################################################
     ## Capsense (Trackpad, FSC/ Thumbstick 
-    ##   This returns 18 16-bit valuse.  
-    ##   1-8  Trackpad Y
-    ##   9-16 Trackpad X
-    ##   17 Thumbstick Touch
-    ##   18 FSC Sensor
+    ##   This returns 2x 16-bit valuse.  
+    ##   1 Thumbstick Touch
+    ##   2 FSC Sensor
     ##########################################################################################################
-    # Get compensation capacitance values for all sensors on a side 
+    # Get compensation capacitance values for D21 sensors on a side 
     def capsense_get_cc_vals(self, side):
         op = 0xE3
         # left = 0, right = 1
@@ -141,7 +156,7 @@ class ControllerInterface:
                 return None
 
         side, valid = struct.unpack('=2B', report_bytes[0:2])
-        cc_vals = struct.unpack('=18H', report_bytes[2:])
+        cc_vals = struct.unpack('=2H', report_bytes[2:])
 
         return valid, cc_vals
 
@@ -151,21 +166,13 @@ class ControllerInterface:
         report_bytes = struct.pack('=2H', side, type)
         self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
 
-    # Get all trackpad Capsense CC Vals
-    def capsense_get_all_trackpad_cc_vals(self):
-        valid0, cc_vals_0 = self.capsense_get_cc_vals(self.SIDE_LEFT)
-        valid1, cc_vals_1 = self.capsense_get_cc_vals(self.SIDE_RIGHT)
-        if not valid0 or not valid1:
-            return ()
-        return (cc_vals_0[0:16], cc_vals_1[0:16])
-
     # Get Thumbstick and FSC
-    def capsense_get_all_thumbstick_FSC_vals(self):
+    def capsense_get_all_thumbstick_FSC_cc_vals(self):
         valid0, cc_vals_0 = self.capsense_get_cc_vals(self.SIDE_LEFT)
         valid1, cc_vals_1 = self.capsense_get_cc_vals(self.SIDE_RIGHT)
         if not valid0 or not valid1:
             return ()
-        return (cc_vals_0[16:], cc_vals_1[16:])
+        return (cc_vals_0, cc_vals_1)
 
     # Capsense Calibrate FSC Thumb
     def capsense_calibrate_fsc_thumb(self, side):
@@ -178,17 +185,12 @@ class ControllerInterface:
     ##########################################################################################################
     ## Trackpad 
     ##########################################################################################################
-	# Trackpad middle out percentage
-    def trackpad_set_middle_out_percentage(self, percent):
-        self.set_setting(71, percent)
+    # Trackpad Noise Threshold for frequency hopping
+    def rushmore_set_noise_threshold(self, threshold):
+        self.set_setting(51, threshold)
 
-    # Trackpad centroid sensor threshold
-    def trackpad_set_centroid_threshold(self, threshold):
-        self.set_setting(67, threshold)
-
-    # Trackpad Z threshold for touch detection
-    def trackpad_set_z_threshold(self, threshold):
-        self.set_setting(63, threshold)
+    def rushmore_get_noise_threshold(self):
+        return (self.get_setting(51))
 
     # Trackpad hysteresis for touch detection
     def trackpad_set_hysteresis(self, hyst):
@@ -219,7 +221,76 @@ class ControllerInterface:
         op = 0xDC
         report_bytes = struct.pack('=2B4H', side, threshold, x_min, x_max, y_min, y_max)
 
-        self.hid_dev_mgr.send_feature_report(op, report_bytes)     
+        self.hid_dev_mgr.send_feature_report(op, report_bytes)
+       
+    def rushmore_get_current_cal( self, side ):
+        op = 0xAA
+        fulldata = []
+        for rowset in range (0, 4):
+            report_bytes = struct.pack('2B', side, rowset)
+            self.hid_dev_mgr.send_feature_report(op, report_bytes)
+
+            # Retrieve and parse the result.
+            report_type, report_length, report_bytes = self.hid_dev_mgr.get_feature_report()
+
+            if not report_length or report_type != op:
+                return None
+
+            (reported_side, rowset) = struct.unpack('=2B', report_bytes[0:2])
+            rowdata = struct.unpack('=16H', report_bytes[2:])
+            fulldata += rowdata
+       
+        # Returned data is complete backwards and transposed. 
+        fulldata = fulldata[::-1] 
+        fulldata = self.transpose( fulldata, 8 )
+        return reported_side, fulldata
+
+    def transpose( self, list, rank ):
+        out = [None] * (rank * rank)
+        for row in range(0, rank):
+            for col in range(0, rank):
+                index = col * rank + row
+                out[index] = list[row * rank + col]
+        return out
+
+    def rushmore_get_factory_cal( self, side ):
+        op = 0xAB
+        fulldata = []
+        for rowset in range (0, 4):
+            report_bytes = struct.pack('2B', side, rowset)
+            self.hid_dev_mgr.send_feature_report(op, report_bytes)
+
+            # Retrieve and parse the result.
+            report_type, report_length, report_bytes = self.hid_dev_mgr.get_feature_report()
+
+            if not report_length or report_type != op:
+                return None
+
+            (reported_side, rowset) = struct.unpack('=2B', report_bytes[0:2])
+            rowdata = struct.unpack('=16H', report_bytes[2:])
+            fulldata += rowdata
+        # Returned data is complete backwards and transposed. 
+        fulldata = fulldata[::-1] 
+        fulldata = self.transpose( fulldata, 8 )
+        return reported_side, fulldata
+
+    def rushmore_cal_to_str( self, cal):
+        if cal[0] == 255:
+            return 'Uncalibrated'
+
+        big_str='Side: {}'.format(cal[0]) + os.linesep
+        cal = cal[1]            # remove the 'side' element of the tuple
+
+        for row in range(0, 8):
+            start = row * 8
+            row_str = ''.join(str(cal[start:start+8])) + ',' + os.linesep
+            big_str = big_str + row_str
+        return big_str
+
+    def rushmore_get_z_values(self):
+        self.set_debug_output_mode(1)
+        data = self.get_data()
+        return ( data.get('left_debug'), data.get('right_debug')) 
 
     ##########################################################################################################
     ## IMU 
@@ -258,7 +329,7 @@ class ControllerInterface:
         report_bytes = struct.pack('')
         self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
 
-        sleep(1)
+        sleep(2)
         return self.imu_get_selftest_results()
 
     # IMU Get temp
@@ -268,11 +339,12 @@ class ControllerInterface:
         self.set_imu_mode(1)
         sleep(0.05)
         self.set_imu_mode(32)
-        sleep(0.05)
+        sleep(0.1)
         data = self.get_data()
+        self.set_imu_mode(1)
         return ( data.get('accel_x') +  data.get('accel_y') / 1000)
 
-    def imu_get_cal(self):
+    def imu_get_full_cal(self):
         op = 0xE6
         report_bytes = struct.pack('')
 
@@ -283,14 +355,30 @@ class ControllerInterface:
         if not report_length or report_type != op:
             return None
 
-        (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z) = struct.unpack('=3b3h', report_bytes)
-        return acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z
+        (side, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type) = struct.unpack('=B3b3hb', report_bytes)
+        return side, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type
+    
+    def imu_get_cal(self):
+        (side, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, _) = self.imu_get_full_cal()
+        return side, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z
 
-    def imu_set_cal(self, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z):
+    def imu_set_full_cal(self, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type):
         op = 0xE7
-        report_bytes = struct.pack('=3b3h', acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z)
+        report_bytes = struct.pack('=4b3hb', 1, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type)
 
         self.hid_dev_mgr.send_feature_report(op, report_bytes)     
+
+    def imu_set_cal(self, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z):
+        (_, _, _, _, _, _, imu_type) = self.imu_get_full_cal()
+        self.imu_set_full_cal (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type)
+
+    def imu_get_type(self):
+        (_, _, _, _, _, _, _, imu_type) = self.imu_get_full_cal()
+        return imu_type, 'Invensense' if imu_type ==1 else 'Bosch'
+
+    def imu_set_type(self, imu_type):
+        (_, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, _) = self.imu_get_full_cal()
+        self.imu_set_full_cal (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type)
 
     ##########################################################################################################
     ## Thumbstick 
@@ -326,7 +414,7 @@ class ControllerInterface:
 
     def thumbstick_set_cal(self, side, x_center_min, x_center_max, x_full_min, x_full_max, y_center_min, y_center_max, y_full_min, y_full_max):
         op = 0xDA
-        report_bytes = struct.pack('=B8H', side,  x_full_min, x_full_max, x_center_min, x_center_max, y_full_min, y_full_max, y_center_min, y_center_max)
+        report_bytes = struct.pack('=B8H', side, x_full_min, x_full_max, x_center_min, x_center_max, y_full_min, y_full_max, y_center_min, y_center_max)
 
         self.hid_dev_mgr.send_feature_report(op, report_bytes)
 
@@ -396,14 +484,14 @@ class ControllerInterface:
         if not report_length or report_type != op:
                 return None
 
-        (side, min, max) = struct.unpack('=B2H', report_bytes)
-        self.logger.info('Pressure Cal Side: {}, MAX: {}, MIN: {}'.format(side, max, min))
-        return side, max, min
+        (side, min, max, grams) = struct.unpack('=B3H', report_bytes)
+        self.logger.info('Pressure Cal Side: {}, MAX: {}, MIN: {}, CAL_WT: {}'.format(side, max, min, grams))
+        return side, max, min, grams
         
-    def pressure_set_cal(self, side, max, min):
+    def pressure_set_cal(self, side, max, min, grams):
         op = 0xE1
         # left = 0, right = 1
-        report_bytes = struct.pack('=B2H', side, min, max)
+        report_bytes = struct.pack('=1B3H', side, min, max, grams)
 
         self.hid_dev_mgr.send_feature_report(op, report_bytes)
 
@@ -449,6 +537,30 @@ class ControllerInterface:
         type, data = struct.unpack('=BH', report_bytes)
         return data
 
+    ##########################################################################################################
+    ## Usage 
+    ##########################################################################################################
+    def clear_usage( self, side):  
+        feature_report_type = 0xE9
+        feature_report_length = 2
+        report_bytes = struct.pack('=BB', side, 1 )
+
+        self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
+ 
+    def get_usage(self, side):  
+        feature_report_type = 0xE9
+        feature_report_length = 4
+        report_bytes = struct.pack('=BB', side, 0 )
+
+        self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
+
+        # Retrieve and parse the result.
+        report_type, report_length, report_bytes = self.hid_dev_mgr.get_feature_report()
+        if report_type != feature_report_type:
+            return {}
+
+        side, _, count, bit_count = struct.unpack('=2BIH', report_bytes)
+        return count, bit_count
     ##########################################################################################################
     # Controller Attributes and Mappings
     ##########################################################################################################
@@ -645,8 +757,10 @@ class ControllerInterface:
     ## Get Thumbstick Capsense Values 
     ##########################################################################################################
     def get_thumbstick_capsense_values(self):
+        self.set_setting(67, 0)  #Set to thumbstick touch mode
+        sleep(0.02)
         data = self.get_data()
-        return ( data.get('left_thumbstick_touch'), data.get('right_thumbstick_touch'))
+        return ( data.get('left_debug'), data.get('right_debug'))
 
     ##########################################################################################################
     ## Get Trigger Values 
@@ -734,11 +848,11 @@ class ControllerInterface:
     ## Pressure Cal
     ##########################################################################################################
     def get_pressure_cal(self):
-        _, max_0, min_0 = self.pressure_get_cal(self.SIDE_LEFT)
-        _, max_1, min_1 = self.pressure_get_cal(self.SIDE_RIGHT)
+        _, max_0, min_0, grams_0 = self.pressure_get_cal(self.SIDE_LEFT)
+        _, max_1, min_1, grams_1 = self.pressure_get_cal(self.SIDE_RIGHT)
 
-        return max_0, min_0, max_1, min_1
-
+        return max_0, min_0, grams_0, max_1, min_1, grams_1
+    
     def set_pressure_cal(self, max_0, min_0, max_1, min_1):
         self.pressure_set_cal(0, max_0, min_0)
         self.pressure_set_cal(1, max_1, min_1)
@@ -759,6 +873,15 @@ class ControllerInterface:
         self.thumbstick_set_cal(self.SIDE_LEFT, x_center_min_0, x_center_max_0, x_full_min_0, x_full_max_0, y_center_min_0, y_center_max_0, y_full_min_0, y_full_max_0)
         self.thumbstick_set_cal(self.SIDE_RIGHT, x_center_min_1, x_center_max_1, x_full_min_1, x_full_max_1, y_center_min_1, y_center_max_1, y_full_min_1, y_full_max_1)
 
+    ##########################################################################################################
+    ## Debug Data Output (modes setting for what's sent w/ normal packets in debug values
+    ## Mode: 0  Thumbstick Touch Counts (L, R) [Default]
+    ## Mode: 1  Rushmore Z values (amount of touch) (L, R)
+    ## Mode: 2  Rushmore EF indices (L, R)
+    ## Mode: 3  Rushmore Noise levels (L, R)
+    ##########################################################################################################
+    def set_debug_output_mode(self, mode):
+        self.set_setting(67, mode)
 
     ##########################################################################################################
     ## Get Raw Trackpad Data
