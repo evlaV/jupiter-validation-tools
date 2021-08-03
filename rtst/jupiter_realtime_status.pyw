@@ -692,7 +692,8 @@ else:
 logger=logging.getLogger('RTST')
 logger.setLevel(logging.DEBUG)
 
-fh = logging.FileHandler('RTST.log')
+log_file_path = os.path.expanduser('~/RTST.log')
+fh = logging.FileHandler(log_file_path)
 fh.setLevel(logging.DEBUG)
 
 ch = logging.StreamHandler(sys.stdout)
