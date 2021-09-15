@@ -4,13 +4,9 @@ import logging
 import gzip
 from loc_strings import loc_strings
 
-__version__ = "$Revision: #38 $"
-__date__ = "$DateTime: 2021/07/30 11:04:00 $"
-
 highlight = False
 color_pallete = []
 debug_trails = 0
-
 
 button_masks = {
     'trigger_right':			0x0000000000000001,
@@ -142,6 +138,7 @@ class UIRoot:
             "type" : "TextWithLabels",
             "labels" : (
                 self.get_loc_str('Board HW ID'),
+                'Board TP ID',
                 self.get_loc_str('Board Serial'),
                 self.get_loc_str('App Build Timestamp'),
                 self.get_loc_str('App Build Date'),
@@ -152,6 +149,7 @@ class UIRoot:
             "trigger_limits" : None,
             "data_xform_funcs" : (
                 (lambda x: self.conv_board_rev(1)),
+                (lambda x: self.get_tp_id(1)),
                 (lambda x: self.get_board_serial(1)),
                 (lambda x: self.get_hex_build_timestamp(1)),
                 (lambda x: self.get_str_build_timestamp(1)),
@@ -159,6 +157,7 @@ class UIRoot:
                 (lambda x: self.get_str_boot_build_timestamp(1)),
             ),
             "data_fields" : (
+                None,
                 None,
                 None,
                 None,
@@ -173,6 +172,7 @@ class UIRoot:
             "type" : "TextWithLabels",
             "labels" : (
                 self.get_loc_str('Board HW ID'),
+                'Board TP ID',
                 self.get_loc_str('Board Serial'),
                 self.get_loc_str('App Build Timestamp'),
                 self.get_loc_str('App Build Date'),
@@ -183,6 +183,7 @@ class UIRoot:
             "trigger_limits" : None,
             "data_xform_funcs" : (
                 (lambda x: self.conv_board_rev(0)),
+                (lambda x: self.get_tp_id(0)),
                 (lambda x: self.get_board_serial(0)),
                 (lambda x: self.get_hex_build_timestamp(0)),
                 (lambda x: self.get_str_build_timestamp(0)),
@@ -190,6 +191,7 @@ class UIRoot:
                 (lambda x: self.get_str_boot_build_timestamp(0)),
             ),
             "data_fields" : (
+                None,
                 None,
                 None,
                 None,
@@ -644,20 +646,16 @@ class UIRoot:
             "labels" : (
                 self.get_loc_str('Haptics Enabled'),
                 'Frequency',
-                'Duty Cycle %',
                 self.get_loc_str('Haptics Repeat Count'),
                 self.get_loc_str('Haptics Loop Time'),
-                self.get_loc_str('Haptic Mode'),
                 'Haptic gain (dB)',
                 'Haptic Int (0-4)'
             ),
             "ranges" : (
                 (0, 2),
                 (0, 1000),
-                (0, 100),
                 (0, 10),
                 (0, 40),
-                (0, 1),
                 (-24, 6),
                 (0, 3),
             ),
@@ -665,26 +663,19 @@ class UIRoot:
                 (.5 , .6),
                 (.5 , .6),
                 (.5 , .6),
-                (.5 , .6),
-                (.5 , .6),
                 (.5 , .6),	
-                (.5 , .6),
                 (0, 1),
                 (0, 1),
             ),
             "data_xform_funcs" : (
                 (lambda x: self.get_ticking_display()),
                 (lambda x: self.get_haptic_freq()),
-                (lambda x: self.get_haptic_duty_cycle()),
                 (lambda x: self.get_tick_repeat()),
                 (lambda x: self.get_tick_interval()),
-                (lambda x: self.get_haptic_mode()),
                 (lambda x: self.get_haptic_gain()),
                 (lambda x: self.get_haptic_len()),
            ),
             "data_fields" : (
-                None,
-                None,
                 None,
                 None,
                 None,
@@ -928,6 +919,7 @@ class UIRoot:
                 'Rushmore Noise Floor',
                 'Rushmore Freq Hopping',
                 self.get_loc_str('Trackpad Clip'),
+                'Trackpad Filt',
             ),
             "ranges" : (
                 (0, 400),
@@ -935,7 +927,8 @@ class UIRoot:
                 (0 ,1800),
                 (0, 300),
                 (0, 1),
-                (0, 1)
+                (0, 1),
+                (0, 1),
             ),
             "trigger_limits" : (
                 (0, 0),
@@ -943,7 +936,8 @@ class UIRoot:
                 (0, 0),
                 (0, 0),
                 (0, 0),
-                (0, 0)
+                (0, 0),
+                (0, 0),
             ),
             "data_xform_funcs" : (
                 (lambda x: self.get_rushmore_noise_threshold()),
@@ -952,8 +946,10 @@ class UIRoot:
                 (lambda x: self.get_rushmore_noise_floor()),
                 (lambda x: self.get_rushmore_freq_hopping()),
                 (lambda x: self.get_trackpad_clipping()),
+                (lambda x: self.get_trackpad_filt()),
             ),
             "data_fields" : (
+                None,
                 None,
                 None,
                 None,
@@ -990,14 +986,12 @@ class UIRoot:
         self.debug_display_mode = 0
         self.thumbstick_touch_threshold = 0
 
-        # 0 = dac. 1 is legacy mode
-        self.haptic_mode = 0
-
         self.imu_mode = 0
         self.pressure_raw = 0
         self.trigger_raw = 0
         self.thumbstick_raw_mode = 0
         self.trackpad_clipping = 1
+        self.trackpad_filt = 1
         self.raw_trackpad_mode = 0
         self.trackpad_gate = 1
 
@@ -1016,7 +1010,6 @@ class UIRoot:
         self.tick_side = 0
 
         self.haptic_freq = 170
-        self.haptic_duty_percent = 50
 
         self.haptic_gain = 0
         self.haptic_len = 1
@@ -1155,9 +1148,6 @@ class UIRoot:
     def get_haptic_freq(self):
         return self.haptic_freq
 
-    def get_haptic_duty_cycle(self):
-        return self.haptic_duty_percent
-
     def get_haptic_gain(self):
         return self.haptic_gain
 
@@ -1198,11 +1188,11 @@ class UIRoot:
     def get_trackpad_clipping(self):
         return self.trackpad_clipping
     
+    def get_trackpad_filt(self):
+        return self.trackpad_filt
+    
     def get_trackpad_framerate(self):
         return self.trackpad_framerate	
-
-    def get_haptic_mode(self):
-        return self.haptic_mode
 
     def get_haptic_gain(self):
         return self.haptic_gain
@@ -1241,6 +1231,13 @@ class UIRoot:
         if not cached:
             cached = None
         return cached
+
+    def get_tp_id(self, unit):
+        if unit == 1:
+            tp_id = self.get_dev_info('trackpad_id')
+        else:
+            tp_id = self.get_dev_info('secondary_trackpad_id')
+        return str(tp_id)
 
     def get_str_boot_build_timestamp(self, unit):
         if unit == 1:
@@ -1341,6 +1338,10 @@ class UIRoot:
             name = 'EV2 (AOK)'
         elif hw_id == 26:
             name = 'EV2 (YDB)'
+        elif hw_id == 27:
+            name = 'DV'
+        elif hw_id == 28:
+            name = 'EV2 (TIMP)'
         elif hw_id:
             name = 'Unknown (%d)' % hw_id
         elif hw_id == None:
@@ -1446,8 +1447,8 @@ class UIRoot:
                 if self.tick_count >= self.tick_interval:
 
                     period = 1000000 / self.haptic_freq
-                    tick_on_us = int( period * (self.haptic_duty_percent / 100))
-                    tick_off_us = int (period * ((100 - self.haptic_duty_percent) / 100) )
+                    tick_on_us = int( period  / 2)
+                    tick_off_us = int (period / 2)
 
                     if self.tick_side == 1:
                         tick_target = 1

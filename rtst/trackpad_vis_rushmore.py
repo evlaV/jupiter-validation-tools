@@ -468,7 +468,7 @@ class TrackpadVis():
 
     def compute_pos(self, pad_num, raw_values):
 
-        x_val = self.rescale_value(self.weighted_average(self.x_vals), .05, .95)
+        x_val = self.rescale_value(self.weighted_average(self.x_vals), .1, .9)
         y_val = self.rescale_value(self.weighted_average(self.y_vals), .1, .9)
         
 
@@ -737,7 +737,7 @@ def connect_cb(hid_dev_mgr):
     #Lower Frame rate
     cntrlr_mgr.sys_set_framerate(8)
 
-    # Enable raw data for Rushmore on right trackpad
+    # Enable raw data for Rushmore (only right trackpad)
     cntrlr_mgr.trackpad_set_raw_data_mode(4)
 
     # Enable status messages

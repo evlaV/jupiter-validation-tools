@@ -6,8 +6,8 @@ import logging
 import statistics
 import collections
 
-__version__ = "$Revision: #27 $"
-__date__ = "$DateTime: 2021/07/09 11:36:36 $"
+__version__ = "$Revision: #28 $"
+__date__ = "$DateTime: 2021/08/12 09:55:41 $"
 
 valve_messages = {
 
@@ -270,6 +270,7 @@ class ValveMessageHandler:
 
         self.history_index = 0
         self.len_history = 128
+        self.debug_history = 32
         self.rushmore_raw_data = []
         self.data_last_packet_num = 0 
 
@@ -278,8 +279,8 @@ class ValveMessageHandler:
         self.r_x_history = collections.deque(maxlen = self.len_history)
         self.r_y_history = collections.deque(maxlen = self.len_history)
 
-        self.left_debug_history = collections.deque(maxlen = self.len_history)
-        self.right_debug_history = collections.deque(maxlen = self.len_history)
+        self.left_debug_history = collections.deque(maxlen = self.debug_history)
+        self.right_debug_history = collections.deque(maxlen = self.debug_history)
 
 
         self.l_x_history.append(0)

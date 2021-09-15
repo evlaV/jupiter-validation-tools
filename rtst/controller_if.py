@@ -10,9 +10,6 @@ logger = logging.getLogger('RTST.CNTRLR')
 from hid_dev_mgr import HidDeviceManager
 from valve_message_handler import ValveMessageHandler
 
-__version__ = "$Revision: #29 $"
-__date__ = "$DateTime: 2021/07/30 11:04:00 $"
-
 class ControllerInterface:
 
     SIDE_LEFT = 0
@@ -103,11 +100,7 @@ class ControllerInterface:
     ##########################################################################################################
     ## Haptic 
     ##########################################################################################################		
-    # Haptic Controls (Switches between DAC and Legacy mode -- DO NOT USE)
-    def haptic_set_mode(self, mode):
-        feature_report_type = 0xDD
-        report_bytes = struct.pack('B', 1 if mode else 0)
-        self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
+    # Haptic side translation
 
     # Haptic Pulse - Generate a legacy haptic pulse train
     def haptic_pulse(self, side, on_us=1000, off_us=100, repeat_count=0, dBgain=0):
@@ -136,6 +129,36 @@ class ControllerInterface:
     def haptic_enable(self, enable ):
         self.set_setting( 70, enable)
     
+    # New Haptic ControllerInterface
+    def haptic_off(self, side):
+        if self.hid_dev_mgr.is_open():
+            feature_report_type = 0xEA
+
+            report_bytes = struct.pack('=BB', side, 0)
+            self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
+
+    def haptic_cmd(self, side, cmd, intensity, gain):
+        if self.hid_dev_mgr.is_open():
+            feature_report_type = 0xEA
+
+            report_bytes = struct.pack('=BBBb', side, cmd, intensity, gain)
+            self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
+    
+    def haptic_tone(self, side, gain, freq, dur_ms):
+        if self.hid_dev_mgr.is_open():
+            feature_report_type = 0xEA
+
+            report_bytes = struct.pack('=3BbHhH', side, 3, 0, gain, freq, dur_ms, 0)
+            self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)            
+    
+    def haptic_rumble(self, side, rumble_intensity, gain, dur_ms):
+        if self.hid_dev_mgr.is_open():
+            feature_report_type = 0xEA
+
+            report_bytes = struct.pack('=3BbHhH', side, 4, 0, gain, 0, dur_ms, rumble_intensity)
+            self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)            
+
+
     ##########################################################################################################
     ## Capsense (Trackpad, FSC/ Thumbstick 
     ##   This returns 2x 16-bit valuse.  
@@ -214,12 +237,12 @@ class ControllerInterface:
         if not report_length or report_type != op:
                 return None
 
-        (side, threshold, x_min, x_max, y_min, y_max) = struct.unpack('=2B4H', report_bytes)
+        (side, threshold, x_min, x_max, y_min, y_max) = struct.unpack('=Bb4H', report_bytes)
         return side, threshold, x_min, x_max, y_min, y_max
 
     def trackpad_set_cal(self, side, threshold, x_min, x_max, y_min, y_max):
         op = 0xDC
-        report_bytes = struct.pack('=2B4H', side, threshold, x_min, x_max, y_min, y_max)
+        report_bytes = struct.pack('=Bb4H', side, threshold, x_min, x_max, y_min, y_max)
 
         self.hid_dev_mgr.send_feature_report(op, report_bytes)
        
@@ -275,8 +298,8 @@ class ControllerInterface:
         return reported_side, fulldata
 
     def rushmore_cal_to_str( self, cal):
-        if cal[0] == 255:
-            return 'Uncalibrated'
+      #  if cal[0] == 255:
+      #      return 'Uncalibrated'
 
         big_str='Side: {}'.format(cal[0]) + os.linesep
         cal = cal[1]            # remove the 'side' element of the tuple
@@ -333,16 +356,13 @@ class ControllerInterface:
         return self.imu_get_selftest_results()
 
     # IMU Get temp
-    #  Sets IMU into the goofy debug (temp) mode. 
     def imu_get_temp(self):
         # Ensure that we're running first in 'normal' mode.
         self.set_imu_mode(1)
-        sleep(0.05)
-        self.set_imu_mode(32)
-        sleep(0.1)
+        self.set_setting(67, 5)  # Set to IMU temp mode
+        sleep(0.02)
         data = self.get_data()
-        self.set_imu_mode(1)
-        return ( data.get('accel_x') +  data.get('accel_y') / 1000)
+        return (data.get('right_debug'))
 
     def imu_get_full_cal(self):
         op = 0xE6
@@ -485,7 +505,7 @@ class ControllerInterface:
                 return None
 
         (side, min, max, grams) = struct.unpack('=B3H', report_bytes)
-        self.logger.info('Pressure Cal Side: {}, MAX: {}, MIN: {}, CAL_WT: {}'.format(side, max, min, grams))
+#        self.logger.info('Pressure Cal Side: {}, MAX: {}, MIN: {}, CAL_WT: {}'.format(side, max, min, grams))
         return side, max, min, grams
         
     def pressure_set_cal(self, side, max, min, grams):
@@ -518,14 +538,14 @@ class ControllerInterface:
     def set_setting(self, setting_num, setting_val):
         feature_report_type = 0x87
         feature_report_length = 3 # we're only setting one setting at a time
-        report_bytes = struct.pack('=BH', setting_num, setting_val)
+        report_bytes = struct.pack('=Bh', setting_num, setting_val)
 
         self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
 
     def get_setting(self, setting_num):
         feature_report_type = 0x89
         feature_report_length = 3
-        report_bytes = struct.pack('=BH', setting_num, 0)
+        report_bytes = struct.pack('=Bh', setting_num, 0)
 
         self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
 
@@ -631,7 +651,12 @@ class ControllerInterface:
             # ATTRIB_STREAMING
             elif tag == 15:
                 attrs['data_streaming'] = val
-                        
+            # ATTRIB_TRACKPAD_ID
+            elif tag == 16:
+                attrs['trackpad_id'] = val                      
+            # ATTRIB_SECONDARY_TRACKPAD_ID
+            elif tag == 17:
+                attrs['secondary_trackpad_id'] = val
         return attrs
 
     def get_str_attribute(self, attribute_number):
@@ -728,6 +753,13 @@ class ControllerInterface:
     def get_hwid(self):
         device_info = self.get_attributes()
         return ( device_info.get('secondary_hw_id'), device_info.get('hw_id') )
+
+    ##########################################################################################################
+    ## Get HWID
+    ##########################################################################################################
+    def get_tp_id(self):
+        device_info = self.get_attributes()
+        return ( device_info.get('secondary_tp_id'), device_info.get('tp_id') )
 
     ##########################################################################################################
     ## Get Button State
@@ -913,71 +945,4 @@ class ControllerInterface:
         else:
             return (None, None)
 
-    ##########################################################################################################
-    ## Pin Test Data Results
-    ##   Not all data is accessible from a single transaciton.  
-    ##   Side is 0,1 for L/R I.e., secondary, primary.
-    ##   Port is 0,1 for A, B (2 sets of pins on the chip.
-    ##   Drive is 0,1 for walking 0, 1 (Ignored for driven 0 and drive 1 measurements
-    ##	 OtherPort is 0,1 indicating for 'walking' tests which ports data should be returned in pindata
-    ##	 Pinset is 0-3 and determines which set of 8x32-bit words is returned for the selected port, etc.
-    ## 
-    ##	The shorted to ground, shorted to PWR results are available via pinset 0x80. These results are returned 
-    ##  as 2x 32-bit words in pindata. Drive, Otherport are ignored for this request.
-    ##
-    ##  A set bit in any of these returned words indicates a fault. The bit position indicates which pin it afrects
-    ##########################################################################################################
-    def get_pin_test_results(self, side, port, drive, other_port, pinset):
-        feature_report_type = 0xE5
-        report_bytes = struct.pack('=5B', side, port, drive, other_port, pinset)
-        self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
-
-        # Retrieve and parse the result.
-        report_type, report_length, report_bytes = self.hid_dev_mgr.get_feature_report()
-
-        if not report_length or report_type != feature_report_type:
-            return None
-
-        (side,  port, drive, other_port, pinset) = struct.unpack('=5B', report_bytes[0:5])
-        pindata = struct.unpack('=8I', report_bytes[5:])
-        return (side, port, drive, other_port, pinset, pindata)
-
-
-    ##########################################################################################################
-    ## Pin Test Error Check
-    ##########################################################################################################
-    def make_pin_name_index(self, port, pin_index):
-        out_str = ''
-        out_str += 'P' + ('B' if port else 'A') + '{}'.format(pin_index) + ' '
-        return out_str
-
-    def make_pin_name(self, port, mask):
-        out_str = ''
-        for pin in range(0, 32):
-            if mask & (1 << pin):
-                out_str += 'P' + ('B' if port else 'A') + '{}'.format(pin) + ' '
-        return out_str
-
-    def print_pin_test_errors(self):
-        # First check for Stuck lo or hi
-        for side in range(0, 2):
-            for port in range(0, 2):
-                _, _, _, _, _, pindata = self.get_pin_test_results(side, port, 0, 0, 0x80)
-                if pindata[0] != 0:
-                    self.logger.info('Pins stuck at "1" Side:{} '.format('R' if side else 'L'))
-                    self.logger.info( self.make_pin_name( port, pindata[0]))
-
-                if pindata[1] != 0:
-                    self.logger.info('Pins stuck at "0" Side:{} '.format('R' if side else 'L'))
-                    self.logger.info( self.make_pin_name( port, pindata[1]))
-
-        for side in range(0, 2):
-            for port in range(0, 2):
-                for drive in range(0, 2):
-                    for other_port in range(0, 2):
-                        for pinset in range(0, 4):
-                            _, _, _, _, _, pindata = self.get_pin_test_results(side, port, drive, other_port, pinset)
-                            for i in range(0, 8):
-                                if pindata[i] != 0:
-                                    self.logger.info('Pins Short Detected via walking {}): Side {}'.format('HI' if drive else 'LO', 'R' if side else 'L' ))
-                                    self.logger.info('\t' + self.make_pin_name_index(port, pinset * 8 + i ) + ' :: ' + self.make_pin_name(port, pindata[i])) 
+  
