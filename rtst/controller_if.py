@@ -148,16 +148,29 @@ class ControllerInterface:
         if self.hid_dev_mgr.is_open():
             feature_report_type = 0xEA
 
-            report_bytes = struct.pack('=3BbHhH', side, 3, 0, gain, freq, dur_ms, 0)
+            report_bytes = struct.pack('=3BbHhHHB', side, 3, 0, gain, freq, dur_ms, 0, 0, 0)
             self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)            
     
-    def haptic_rumble(self, side, rumble_intensity, gain, dur_ms):
+    def haptic_rumble(self, side, gain, freq, dur_ms, lfo_freq, lfo_depth):
         if self.hid_dev_mgr.is_open():
             feature_report_type = 0xEA
 
-            report_bytes = struct.pack('=3BbHhH', side, 4, 0, gain, 0, dur_ms, rumble_intensity)
+            report_bytes = struct.pack('=3BbHhHHB', side, 4, 0, gain, freq, dur_ms, 0, lfo_freq, lfo_depth)
             self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)            
 
+    def haptic_noise(self, side, rumble_intensity, gain, dur_ms):
+        if self.hid_dev_mgr.is_open():
+            feature_report_type = 0xEA
+
+            report_bytes = struct.pack('=3BbHhH', side, 5, 0, gain, 0, dur_ms, rumble_intensity)
+            self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)            
+
+    def haptic_simple_rumble(self, type, intensity, left_motor_speed, right_motor_speed):
+        if self.hid_dev_mgr.is_open():
+            feature_report_type = 0xEB
+
+            report_bytes = struct.pack('=B3H', type, intensity, left_motor_speed, right_motor_speed)
+            self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)            
 
     ##########################################################################################################
     ## Capsense (Trackpad, FSC/ Thumbstick 
@@ -675,6 +688,8 @@ class ControllerInterface:
              return None
 
         # Extract string and strip nulls.
+        if report_bytes[1] == 0xFF:
+            return 'Not Provisioned'
         return report_bytes[1:].strip(b'\x00').decode("utf-8")
 
     ##########################################################################################################
