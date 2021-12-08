@@ -72,9 +72,34 @@ class ControllerInterface:
     def mouse_kbd_control(self, on):
         self.set_setting(9, on)
 
+    def get_test_control(self):
+        return self.get_setting(75)
+
     # Enable / disable control lockouts
     def set_control_lockouts(self, on):
-        self.set_setting(75, on)
+        test_control = self.get_setting(75)
+        if on:
+            test_control |= 0x01
+        else:
+            test_control &= 0xFE
+        self.set_setting(75, test_control)
+
+    def set_touch_threshold_shift(self, on):
+        test_control = self.get_setting(75)
+        if on:
+            test_control |= 0x02
+        else:
+            test_control &= 0xFD
+        self.set_setting(75, test_control)
+
+    def set_haptic_touch_duck(self, on):
+        test_control = self.get_setting(75)
+        if on:
+            test_control |= 0x04
+        else:
+            test_control &= 0xFB
+        self.set_setting(75, test_control)
+
 
     # Set the system framerate
     def sys_set_framerate(self, framerate):
@@ -125,7 +150,7 @@ class ControllerInterface:
         self.haptic_pulse(1, 0, 0, 0, 0 )
 
     
-    # Haptic enabnle: 0 = Off, 1 = On, 2 = Only via USB API
+    # Haptic enable: 0 = Off, 1 = On, 2 = Only via USB API
     def haptic_enable(self, enable ):
         self.set_setting( 70, enable)
     
@@ -144,6 +169,12 @@ class ControllerInterface:
             report_bytes = struct.pack('=BBBb', side, cmd, intensity, gain)
             self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
     
+    def haptic_click(self, side, intensity, gain):
+        self.haptic_cmd(side, 2, intensity, gain)
+
+    def haptic_tick(self, side, intensity, gain):
+        self.haptic_cmd(side, 1, intensity, gain)
+
     def haptic_tone(self, side, gain, freq, dur_ms):
         if self.hid_dev_mgr.is_open():
             feature_report_type = 0xEA
@@ -155,7 +186,7 @@ class ControllerInterface:
         if self.hid_dev_mgr.is_open():
             feature_report_type = 0xEA
 
-            report_bytes = struct.pack('=3BbHhHHB', side, 4, 0, gain, freq, dur_ms, 0, lfo_freq, lfo_depth)
+            report_bytes = struct.pack('=3BbHhHHB', side, 3, 0, gain, freq, dur_ms, 0, lfo_freq, lfo_depth)
             self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)            
 
     def haptic_noise(self, side, rumble_intensity, gain, dur_ms):

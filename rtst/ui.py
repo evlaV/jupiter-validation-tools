@@ -137,6 +137,7 @@ class UIRoot:
             "title" : self.get_loc_str('Main Device'),
             "type" : "TextWithLabels",
             "labels" : (
+                'Unit Serial',
                 self.get_loc_str('Board HW ID'),
                 'Board TP ID',
                 self.get_loc_str('Board Serial'),
@@ -148,6 +149,7 @@ class UIRoot:
             "ranges" : None,
             "trigger_limits" : None,
             "data_xform_funcs" : (
+                (lambda x: self.get_unit_serial()),
                 (lambda x: self.conv_board_rev(1)),
                 (lambda x: self.get_tp_id(1)),
                 (lambda x: self.get_board_serial(1)),
@@ -157,6 +159,7 @@ class UIRoot:
                 (lambda x: self.get_str_boot_build_timestamp(1)),
             ),
             "data_fields" : (
+                None,
                 None,
                 None,
                 None,
@@ -673,7 +676,7 @@ class UIRoot:
                 (lambda x: self.get_tick_repeat()),
                 (lambda x: self.get_tick_interval()),
                 (lambda x: self.get_haptic_gain()),
-                (lambda x: self.get_haptic_len()),
+                (lambda x: self.get_haptic_ui_intensity()),
            ),
             "data_fields" : (
                 None,
@@ -897,7 +900,7 @@ class UIRoot:
                 (lambda x: self.log_compression),
                 (lambda x: self.raw_trackpad_mode),
                 (lambda x: self.debug_mode),
-                (lambda x: self.control_lockout),
+                (lambda x: self.get_test_control()),
             ),
             "data_fields" : (
                 None,
@@ -1012,7 +1015,7 @@ class UIRoot:
         self.haptic_freq = 170
 
         self.haptic_gain = 0
-        self.haptic_len = 1
+        self.haptic_ui_intensity = 1
         self.tick_repeat = 3
 
         self.device_info = {}
@@ -1020,9 +1023,12 @@ class UIRoot:
 
         self.log_start_time = 0
         self.debug_mode = 0
-        self.control_lockout = 1
+        self.trackpad_threshold_shift = 1
 
         self.devinfo_hold_off_count = 0
+        self.test_control = 0
+        self.control_lockout = 1
+        self.trackpad_threshold_shift = 1
 
     def connected(self):
         self.rushmore_noise_threshold = self.cntrlr_mgr.get_setting(51)
@@ -1035,8 +1041,11 @@ class UIRoot:
         self.rushmore_notouch_threshold = self.cntrlr_mgr.get_setting(20)
         self.rushmore_noise_floor = self.cntrlr_mgr.get_setting(63)
         self.rushmore_freq_hopping = self.cntrlr_mgr.get_setting(69)
-        self.control_lockout = self.cntrlr_mgr.get_setting(75)
-        self.haptic_len =  self.cntrlr_mgr.get_setting(65)
+        self.haptic_ui_intensity =  self.cntrlr_mgr.get_setting(65)
+        self.test_control = self.cntrlr_mgr.get_test_control()
+        self.haptic_ui_intensity = self.cntrlr_mgr.get_setting(79)
+
+
 
     def get_debug_display_mode( self ):
         return self.debug_display_mode
@@ -1058,6 +1067,9 @@ class UIRoot:
             return True
         else:
             return False
+
+    def get_test_control(self):
+        return self.test_control
 
     def set_logging_state(self, state):
         if state and not self.logfile:
@@ -1151,8 +1163,8 @@ class UIRoot:
     def get_haptic_gain(self):
         return self.haptic_gain
 
-    def get_haptic_len(self):
-        return self.haptic_len
+    def get_haptic_ui_intensity(self):
+        return self.haptic_ui_intensity
 
     def get_tick_repeat(self):
         return self.tick_repeat
@@ -1231,6 +1243,15 @@ class UIRoot:
         if not cached:
             cached = None
         return cached
+    
+    def get_unit_serial(self):
+        cached = self.device_str_info.get('unit_serial')
+        if cached == None and self.cntrlr_mgr.is_open():
+            cached = self.cntrlr_mgr.get_str_attribute(1)
+            self.device_str_info['unit_serial'] = cached
+
+        return cached
+
 
     def get_tp_id(self, unit):
         if unit == 1:
@@ -1451,9 +1472,9 @@ class UIRoot:
                     tick_off_us = int (period / 2)
 
                     if self.tick_side == 1:
-                        tick_target = 1
-                    elif self.tick_side == 2:
                         tick_target = 0
+                    elif self.tick_side == 2:
+                        tick_target = 1
                     else:
                         tick_target = 2
 

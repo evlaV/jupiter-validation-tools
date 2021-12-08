@@ -12,8 +12,8 @@ from ui import UIRoot
 from  controller_if import ControllerInterface
 from valve_message_handler import ValveMessageHandler
 
-__version__ = "$Revision: #50 $"
-__date__ = "$DateTime: 2021/09/15 14:35:55 $"
+__version__ = "$Revision: #9 $"
+__date__ = "$DateTime: 2021/12/07 10:13:24 $"
 
 color_pallete = [
     "#b3ffe0", # bg
@@ -42,6 +42,7 @@ ep_lists = (
             (0x28DE, 0x1203),	#Win: Steampal Neptune
             (0x28DE, 0x1204),	#Win: Steampal D21 / Jupiter
             (0x28DE, 0x1205),	#Win: Jupiter2
+            (0x28DE, 0x1206),	#Win: Jupiter3
         )
     ),
     (
@@ -103,6 +104,7 @@ Version:
   H\tToggle Limit Triggering
   ^d\tToggle 'Debug' Mode
   '`'\tToggle Control Lockout
+  '~'\tToggle Threshold Shift 
 
  USB
    m\tToggle HID Mouse / Kbd messages
@@ -128,7 +130,6 @@ Version:
   $\t Toggle Rushmore frequency hopping
 
  D21 CAPSENSE
-  ^ / &\tDecrease / increase touch freq [0-15]. Not w FREQ_HOPPING
   *\tToggle Frequency Hopping mode
 
  HAPTICS
@@ -140,6 +141,7 @@ Version:
   E\tIncrement haptics loop interval
   L\tStop all haptics
   0\tStop all haptics
+  &\tChange UI-type haptic intensity
   [ / ]\tDecrease / increase DAC haptic gain (dB)
 
  IMU
@@ -212,6 +214,20 @@ def key_cb(event):
     elif event.char == '`':
         ui_root.control_lockout = not ui_root.control_lockout
         cntrlr_mgr.set_control_lockouts(ui_root.control_lockout)
+        ui_root.test_control = cntrlr_mgr.get_test_control()
+
+# Trackpad Threshold shift control (automatic)
+    elif event.char == '~':
+        ui_root.trackpad_threshold_shift = not ui_root.trackpad_threshold_shift
+        cntrlr_mgr.set_touch_threshold_shift(ui_root.trackpad_threshold_shift)
+        ui_root.test_control = cntrlr_mgr.get_test_control()
+
+# Haptic change of volume on touch (Duck when no touch)
+    elif event.char == '=':
+        ui_root.trackpad_threshold_shift = not ui_root.trackpad_threshold_shift
+
+        cntrlr_mgr.set_haptic_touch_duck(ui_root.trackpad_threshold_shift)
+        ui_root.test_control = cntrlr_mgr.get_test_control()
 
 # Debug
     elif event.char == 'D':
@@ -307,9 +323,9 @@ def key_cb(event):
 
         global tmp_tone
         global tmp_delta
-        logger.info("Tone:" + str(tmp_tone))
-        cntrlr_mgr.haptic_tone(2, 0, 170, -9, tmp_tone, 100)
-        if tmp_tone == 1200 or tmp_tone == 10:
+        logger.info("LFO:" + str(tmp_tone))
+        cntrlr_mgr.haptic_rumble(2, 0, 170, -1, tmp_tone * 1000, 100)
+        if tmp_tone == 40 or tmp_tone == 4:
             tmp_delta *= -1
         tmp_tone += tmp_delta     
 
@@ -318,29 +334,55 @@ def key_cb(event):
         #    haptic_channel = 0
 
     elif event.char == '2':
-        cntrlr_mgr.haptic_rumble(haptic_channel, 1, -6, 10000)
-        haptic_channel += 1
-        if haptic_channel > 2:
-            haptic_channel = 0
+        logger.info('FREQ: ' + str(ui_root.haptic_freq))
+        cntrlr_mgr.haptic_tone(1, +6, ui_root.haptic_freq, 5000)
+        ui_root.haptic_freq += 10
+        if (ui_root.haptic_freq > 2000 ):
+            ui_root.haptic_freq = 50
 
     elif event.char == '3':
         global haptic_ri
         haptic_ri += 1
-        if haptic_ri > 6:
-            haptic_ri = 0
+        if haptic_ri > 16:
+            haptic_ri = 4
         logger.info("Haptic ri to " + str(haptic_ri))
 
-        cntrlr_mgr.haptic_rumble(1, haptic_ri, 3, 10000)
+        cntrlr_mgr.haptic_noise(1, haptic_ri, -3, 10000)
+    
+    elif event.char == '4':
+        for i in range (0, 100):
+
+            cntrlr_mgr.haptic_simple_rumble( 1, 4, 1000, 1000 )
+            sleep(.01)
+        cntrlr_mgr.haptic_simple_rumble( 1, 4, 10000, 10000 )
+        sleep(1)
+        cntrlr_mgr.haptic_simple_rumble( 1, 4, 30000, 30000 )
+        sleep(1)
+        cntrlr_mgr.haptic_simple_rumble( 1, 4, 40000, 50000 )
+
+    elif event.char == '5':
+        cntrlr_mgr.haptic_simple_rumble( 1, 16000, 1000, 10000 )
+    elif event.char == '6':
+        cntrlr_mgr.haptic_simple_rumble( 1, 8000, 10000, 10000 )
+    elif event.char == '7':
+        cntrlr_mgr.haptic_simple_rumble( 1, 1000, 30000, 10000 )
+    elif event.char == '8':
+        cntrlr_mgr.haptic_simple_rumble( 1, 320, 60000, 10000 )
+
+    elif event.char == '9':
+        cntrlr_mgr.haptic_rumble( 2, -3, 170, 330, 6000, 100)
+
 
     elif event.char == ';':
-
+        cntrlr_mgr.haptic_tick(2, 2, 0)
+#        cntrlr_mgr.haptic_enable(1);
 #        cntrlr_mgr.haptic_cmd(0, 2, 2, 0 )
-        logger.info(cntrlr_mgr.imu_get_type())
+        #logger.info(cntrlr_mgr.imu_get_type())
         #logger.info(cntrlr_mgr.imu_get_full_cal())
 
   #      logger.info('Left:  ' + str(cntrlr_mgr.get_usage(0)))
   #      logger.info('Right: ' + str(cntrlr_mgr.get_usage(1)))
-        #cntrlr_mgr.trackpad_set_raw_data_mode(0x4)
+   #     cntrlr_mgr.trackpad_set_raw_data_mode(0x4)
         #logger.info(cntrlr_mgr.rushmore_get_z_values())
  #       logger.info(cntrlr_mgr.imu_get_selftest_results())
  #       logger.info(cntrlr_mgr.imu_get_full_cal())
@@ -368,7 +410,8 @@ def key_cb(event):
         cntrlr_mgr.imu_set_type(0)
 
     elif event.char == ':':
-        cntrlr_mgr.imu_set_type(1)
+        cntrlr_mgr.haptic_enable(0);
+     #   cntrlr_mgr.imu_set_type(1)
 #       cntrlr_mgr.trigger_set_cal( 1, 1234, 587, 0 );
 #       cntrlr_mgr.pressure_set_cal( 1, 199, 1, 1000, 0x00 )
 #        cntrlr_mgr.thumbstick_set_cal( 0, 111, 222, 333, 114, 55, 665, 777, 888 )
@@ -378,12 +421,13 @@ def key_cb(event):
       #  cntrlr_mgr.trackpad_set_cal( 0, 22, 200, 300, 400, 500)
 
     elif event.char == '"':
+        cntrlr_mgr.haptic_enable(2);
  #       cntrlr_mgr.persist_cal(0, 0x17)
  #       cntrlr_mgr.persist_cal(1, 0x17)
 #        cntrlr_mgr.persist_cal( 1, 0x04 )  #Persist Pressure
 #       cntrlr_mgr.persist_cal( 0, 0x02 )  #Persist Thumbstick
 #      cntrlr_mgr.persist_cal( 1, 0x01 )  #Persist Trigger
-       cntrlr_mgr.persist_cal( 1, 0x10 )  #Persist IMU
+#       cntrlr_mgr.persist_cal( 1, 0x10 )  #Persist IMU
 
     elif event.char == '{':
         logger.info(cntrlr_mgr.trackpad_get_cal(0))
@@ -396,10 +440,10 @@ def key_cb(event):
         cntrlr_mgr.persist_cal( 1, 0x08 )  #Persist trackpad cal
 
     elif event.char == '&':
-        ui_root.haptic_len += 1
-        if ui_root.haptic_len > 4:
-            ui_root.haptic_len = 1
-        cntrlr_mgr.set_setting(79, ui_root.haptic_len)
+        ui_root.haptic_ui_intensity += 1
+        if ui_root.haptic_ui_intensity > 4:
+            ui_root.haptic_ui_intensity = 1
+        cntrlr_mgr.set_setting(79, ui_root.haptic_ui_intensity)
 
 # Touch Threshold (Rushmore)
     elif event.char == 'n':
@@ -624,6 +668,9 @@ def key_cb(event):
         logger.info('Trigger L Cal:    ' + str(cntrlr_mgr.trigger_get_cal(0)))
         logger.info('Trigger R Cal:    ' + str(cntrlr_mgr.trigger_get_cal(1)))
 
+        logger.info('Trackpad L Cal:    ' + str(cntrlr_mgr.trackpad_get_cal(0)))
+        logger.info('Trackpad R Cal:    ' + str(cntrlr_mgr.trackpad_get_cal(1)))
+
     elif event.char == 'x':
         logger.info(cntrlr_mgr.imu_get_temp())
     
@@ -711,7 +758,17 @@ logger=logging.getLogger('RTST')
 logger.setLevel(logging.DEBUG)
 
 log_file_path = os.path.expanduser('~/RTST.log')
-fh = logging.FileHandler(log_file_path)
+
+# If the file can't be opened (permissions?) then delete it and re-open
+fh = None
+try:
+    fh = logging.FileHandler(log_file_path)
+except Exception as e:
+    os.remove(log_file_path)
+
+if fh is None:
+    fh=logging.FileHandler(log_file_path)
+
 fh.setLevel(logging.DEBUG)
 
 ch = logging.StreamHandler(sys.stdout)
@@ -728,15 +785,15 @@ logger.addHandler(ch)
 
 
 haptic_channel = 0
-tmp_tone = 20
-tmp_delta = 10
-haptic_ri = 0
+tmp_tone = 10
+tmp_delta = 1
+haptic_ri = 4
 ##########################################################################################################
 ## UI SETUP
 ##########################################################################################################
 root = Tk.Tk()
 truncated_version = __version__[12:-1]
-root.wm_title("Jupiter Real-Time Status Tool - v" + truncated_version)
+root.wm_title("Jupiter Real-Time Status Tool - vB" + truncated_version)
 cntrlr_mgr = ControllerInterface( get_current_ep_list(), connect_cb)
 
 top_frame = Tk.Frame(root, bg = color_pallete[0])

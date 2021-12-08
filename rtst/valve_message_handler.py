@@ -6,8 +6,8 @@ import logging
 import statistics
 import collections
 
-__version__ = "$Revision: #28 $"
-__date__ = "$DateTime: 2021/08/12 09:55:41 $"
+__version__ = "$Revision: #29 $"
+__date__ = "$DateTime: 2021/11/01 13:41:03 $"
 
 valve_messages = {
 
@@ -385,13 +385,13 @@ class ValveMessageHandler:
                 result['r_y_stdev'] = round(math.log2(statistics.stdev(self.r_y_history)+1)*10)
 
 
-            # Filter left_debug / right_debug max
-            if 'left_debug' in result:
-                self.left_debug_history.append(result['left_debug'] )
-                self.right_debug_history.append(result['right_debug'] )
+            ## Filter left_debug / right_debug max
+            #if 'left_debug' in result:
+            #    self.left_debug_history.append(result['left_debug'] )
+            #    self.right_debug_history.append(result['right_debug'] )
 
-                result['left_debug'] = max(self.left_debug_history)
-                result['right_debug'] = max(self.right_debug_history)
+            #    result['left_debug'] = max(self.left_debug_history)
+            #    result['right_debug'] = max(self.right_debug_history)
 
         if msg_type == 0x0C:
             # Collect the next 24 16-bit values after the first 6 bytes.
