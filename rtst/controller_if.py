@@ -182,7 +182,7 @@ class ControllerInterface:
             report_bytes = struct.pack('=3BbHhHHB', side, 3, 0, gain, freq, dur_ms, 0, 0, 0)
             self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)            
     
-    def haptic_rumble(self, side, gain, freq, dur_ms, lfo_freq, lfo_depth):
+    def haptic_lfo_tone(self, side, gain, freq, dur_ms, lfo_freq, lfo_depth):
         if self.hid_dev_mgr.is_open():
             feature_report_type = 0xEA
 
@@ -201,6 +201,13 @@ class ControllerInterface:
             feature_report_type = 0xEB
 
             report_bytes = struct.pack('=B3H', type, intensity, left_motor_speed, right_motor_speed)
+            self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)            
+
+    def haptic_script(self, side, script_id, gain):
+        if self.hid_dev_mgr.is_open():
+            feature_report_type = 0xEA
+
+            report_bytes = struct.pack('=3BbHh2H3B', side, 6, 0, gain, 0, 0, 0, 0, 0, 0, script_id)
             self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)            
 
     ##########################################################################################################
@@ -433,7 +440,7 @@ class ControllerInterface:
         self.hid_dev_mgr.send_feature_report(op, report_bytes)     
 
     def imu_set_cal(self, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z):
-        (_, _, _, _, _, _, imu_type) = self.imu_get_full_cal()
+        (_, _, _, _, _, _, _, imu_type) = self.imu_get_full_cal()
         self.imu_set_full_cal (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type)
 
     def imu_get_type(self):
@@ -602,20 +609,19 @@ class ControllerInterface:
         return data
 
     ##########################################################################################################
-    ## Usage 
+    ## Status 
+    ##   Decoder Below: 
+    ##     Secondary Status:    0 = not present, 1 = secondary operational
+    ##     IMU Type:            0 = Bosch (default), 1 = Invensense
+    ##     Rushmore Fail:       Bitfield (1 = Failure) Bit 0: Left failure, Bit 1: Right Failure (Notes: Left is side / board '0' 
+    ##     IMU Fail:            0 = Working, 1 = Failure
+    ##     Sensor_cal_fail:     Bitfield: Bits 0-3 left, Bits 4-7 Right
+    ##                          Bit 0: Thumbstick, Bit 1: Trigger, Bit 2: Pressure, Bit 3: IMU (if applicable) 
+    ##                          Shift 4 bits left for right side)
     ##########################################################################################################
-    def clear_usage( self, side):  
-        feature_report_type = 0xE9
-        feature_report_length = 2
-        report_bytes = struct.pack('=BB', side, 1 )
-
-        self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
- 
-    def get_usage(self, side):  
-        feature_report_type = 0xE9
-        feature_report_length = 4
-        report_bytes = struct.pack('=BB', side, 0 )
-
+    def get_system_status(self):  
+        feature_report_type = 0xE5
+        report_bytes = struct.pack('')
         self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
 
         # Retrieve and parse the result.
@@ -623,8 +629,9 @@ class ControllerInterface:
         if report_type != feature_report_type:
             return {}
 
-        side, _, count, bit_count = struct.unpack('=2BIH', report_bytes)
-        return count, bit_count
+        secondary_status, imu_type, rushmore_fail, imu_fail, sensor_cal_fail  = struct.unpack('=5B', report_bytes)
+        return secondary_status, imu_type, rushmore_fail, imu_fail, sensor_cal_fail
+
     ##########################################################################################################
     # Controller Attributes and Mappings
     ##########################################################################################################

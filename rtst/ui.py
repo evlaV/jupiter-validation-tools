@@ -1360,9 +1360,15 @@ class UIRoot:
         elif hw_id == 26:
             name = 'EV2 (YDB)'
         elif hw_id == 27:
-            name = 'DV'
+            name = 'MP / DV'
         elif hw_id == 28:
             name = 'EV2 (TIMP)'
+        elif hw_id == 29:
+            name = 'HYBRID(L) D20'
+        elif hw_id == 30:
+            name = 'HYBRID(R) D21'
+        elif hw_id == 31:
+            name = 'HOMOG(R or L) D21'
         elif hw_id:
             name = 'Unknown (%d)' % hw_id
         elif hw_id == None:
