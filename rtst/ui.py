@@ -90,6 +90,8 @@ ui_dimensions = {
 }
 
 trackpad_zoom = 1
+thumbstick_zoom = 1
+thumbstick_offset = 0
 
 class UIRoot:
     def get_loc_str(self, txt):
@@ -377,7 +379,8 @@ class UIRoot:
                 #y-intercept
                 #( 9999.0, 32767.0 * (( 520 + 80 ) - 300)/(700-300) ), # secondary slope,
                 #y-intercept
-            )
+            ),
+            "zoom_source" : "trackpads"
         }
 
         self.left_groups.append(trackpad_plot_group)
@@ -508,7 +511,8 @@ class UIRoot:
                 #y-intercept
                 #( 9999.0, 32767.0 * (( 520 + 80 ) - 300)/(700-300) ), # secondary slope,
                 #y-intercept
-            )
+            ), 
+            "zoom_source" : "thumbsticks"
         }
 
         analog_trigger_group = {
@@ -1047,16 +1051,24 @@ class UIRoot:
 
 
 
-    def get_debug_display_mode( self ):
+    def get_debug_display_mode(self):
         return self.debug_display_mode
 
-    def set_trackpad_zoom( self, zoom ):
+    def set_trackpad_zoom(self, zoom):
         global trackpad_zoom
         trackpad_zoom = zoom
 
-    def get_trackpad_zoom( self ):
+    def get_trackpad_zoom(self):
         global trackpad_zoom
         return trackpad_zoom
+
+    def set_thumbstick_zoom(self, zoom):
+        global thumbstick_zoom
+        thumbstick_zoom = zoom
+
+    def set_thumbstick_offset(self, offset):
+        global thumbstick_offset
+        thumbstick_offset = offset
 
     def toggle_highlight(self):
         global highlight
@@ -1415,9 +1427,9 @@ class UIRoot:
                 elif group["type"] == "TextWithLabels":
                     new_column.add_line(TextGroup(self.canvas, group["title"], group["labels"], group["ranges"], group["trigger_limits"], group["data_xform_funcs"], line_eqs))
                 elif group["type"] == "XYPlots":
-                    new_column.add_line(XYPlotGroup(self.canvas, group["title"], group["labels"], group["ranges"], group["trigger_limits"], group["data_xform_funcs"], line_eqs))
+                    new_column.add_line(XYPlotGroup(self.canvas, group["title"], group["labels"], group["ranges"], group["trigger_limits"], group["data_xform_funcs"], line_eqs, zoom_source=group["zoom_source"]))
                 elif group["type"] == "XYPlotsWithTrails":
-                    new_column.add_line(XYPlotGroup(self.canvas, group["title"], group["labels"], group["ranges"], group["trigger_limits"], group["data_xform_funcs"], line_eqs, trails=True))
+                    new_column.add_line(XYPlotGroup(self.canvas, group["title"], group["labels"], group["ranges"], group["trigger_limits"], group["data_xform_funcs"], line_eqs, trails=True, zoom_source=group["zoom_source"]))
 
     def update_column(self, data, groups, column):
         data_groups = []
@@ -1614,7 +1626,7 @@ class ValueLine:
         return (ui_dimensions["ValueLineWidth"], ui_dimensions["ValueLineHeight"])
     
 class XYPlot:
-    def __init__(self, canvas, trails_enabled = False):
+    def __init__(self, canvas, trails_enabled = False, zoom_source=None):
         self.rangeX = (0, 32767)
         self.rangeY = (0, 32767)
         self.label = "test"
@@ -1636,6 +1648,8 @@ class XYPlot:
         self.max_lines = 2
 
         self.trails_enabled = trails_enabled
+
+        self.zoom_source = zoom_source
 
         self.trail_count = 10
 
@@ -1696,9 +1710,15 @@ class XYPlot:
         if valueX == 0 and valueY == 0 and debug_trails:
             update = False
 
-        global trackpad_zoom
-        valueX *= trackpad_zoom
-        valueY *= trackpad_zoom
+        if self.zoom_source == "thumbsticks":
+            global thumbstick_zoom
+            global thumbstick_offset
+            valueX = valueX * thumbstick_zoom + thumbstick_offset
+            valueY = valueY * thumbstick_zoom + thumbstick_offset
+        elif self.zoom_source == "trackpads":
+            global trackpad_zoom
+            valueX *= trackpad_zoom
+            valueY *= trackpad_zoom
 
         if valueX > 32767:
             valueX = 32767
@@ -1884,14 +1904,14 @@ class ValueLineWithTextAndLabel:
         return  (ls[0] + ui_dimensions["ValueLineWithTextAndLabelLineOffsetX"], ls[1] + ui_dimensions["ValueLineWithTextTextOffsetY"])
 
 class XYPlotWithTextAndLabel:
-    def __init__(self, canvas, label_text, trails_enabled=False):
+    def __init__(self, canvas, label_text, trails_enabled=False, zoom_source=None):
         self.canvas = canvas
         self.x_origin = 0
         self.y_origin = 0
         self.label_text = label_text
         self.widgets = {}
 
-        self.xyplot = XYPlot(self.canvas, trails_enabled)
+        self.xyplot = XYPlot(self.canvas, trails_enabled, zoom_source)
 
     def build_ui(self):
         self.xyplot.set_origin(self.x_origin + ui_dimensions["XYPlotWithTextAndLabelLineOffsetX"], self.y_origin + ui_dimensions["XYPlotWithTextAndLabelLineOffsetY"])
@@ -1932,7 +1952,7 @@ class XYPlotWithTextAndLabel:
             self.xyplot.add_reference_line(line_eq)
 
 class XYPlotGroup:
-    def __init__(self, canvas, title, labels, ranges=None, trigger_limits=None, xform_funcs=None, line_eqs=None, trails=True):
+    def __init__(self, canvas, title, labels, ranges=None, trigger_limits=None, xform_funcs=None, line_eqs=None, trails=True, zoom_source=None):
         self.canvas = canvas
         self.x_origin = 0
         self.y_origin = 0
@@ -1954,10 +1974,12 @@ class XYPlotGroup:
 
         self.trails_enabled = trails
 
+        self.zoom_source = zoom_source
+
     def build_ui(self):
         for i in range(len(self.labels)):
 
-            new_line = XYPlotWithTextAndLabel(self.canvas, self.labels[i], self.trails_enabled)
+            new_line = XYPlotWithTextAndLabel(self.canvas, self.labels[i], self.trails_enabled, self.zoom_source)
             x = self.x_origin
             y = \
                 self.y_origin + \

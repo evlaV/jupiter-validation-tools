@@ -590,7 +590,7 @@ def key_cb(event):
         if zoom == 1:
             ui_root.set_trackpad_zoom( 2 )
         else:
-            ui_root.set_trackpad_zoom ( 1 )
+            ui_root.set_trackpad_zoom( 1 )
 
 # IMU
     elif event.char == 'g':
@@ -651,6 +651,14 @@ def key_cb(event):
 # Thumbstick Command
     elif event.char == 'j':
         ui_root.thumbstick_raw_mode = 1 - ui_root.thumbstick_raw_mode
+        
+        if ui_root.thumbstick_raw_mode == 1:
+            ui_root.set_thumbstick_zoom(20)
+            ui_root.set_thumbstick_offset(-2024)
+        else:
+            ui_root.set_thumbstick_zoom(1)
+            ui_root.set_thumbstick_offset(0)
+        
         cntrlr_mgr.thumbstick_set_raw(ui_root.thumbstick_raw_mode)
 
     elif event.char == 'J':
