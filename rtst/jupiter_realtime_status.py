@@ -653,8 +653,8 @@ def key_cb(event):
         ui_root.thumbstick_raw_mode = 1 - ui_root.thumbstick_raw_mode
         
         if ui_root.thumbstick_raw_mode == 1:
-            ui_root.set_thumbstick_zoom(26)
-            ui_root.set_thumbstick_offset(-1500)
+            ui_root.set_thumbstick_zoom(16)
+            ui_root.set_thumbstick_offset(-2048)
         else:
             ui_root.set_thumbstick_zoom(1)
             ui_root.set_thumbstick_offset(0)
