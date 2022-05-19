@@ -1713,8 +1713,8 @@ class XYPlot:
         if self.zoom_source == "thumbsticks":
             global thumbstick_zoom
             global thumbstick_offset
-            valueX = valueX * thumbstick_zoom + thumbstick_offset
-            valueY = valueY * thumbstick_zoom + thumbstick_offset
+            valueX = thumbstick_zoom * (valueX + thumbstick_offset)
+            valueY = thumbstick_zoom * (valueY + thumbstick_offset)
         elif self.zoom_source == "trackpads":
             global trackpad_zoom
             valueX *= trackpad_zoom
