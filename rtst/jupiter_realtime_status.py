@@ -12,8 +12,8 @@ from ui import UIRoot
 from  controller_if import ControllerInterface
 from valve_message_handler import ValveMessageHandler
 
-__version__ = "$Revision: #13 $"
-__date__ = "$DateTime: 2022/01/27 06:19:54 $"
+__version__ = "$Revision: #19 $"
+__date__ = "$DateTime: 2022/06/29 11:08:41 $"
 
 color_pallete = [
     "#b3ffe0", # bg
@@ -26,7 +26,8 @@ mouse_kbd_on = False
 controller_debug_mode_state = False
 debug_mode = False
 
-
+haptic_intensity_idx = 0
+haptic_intenisty = [ 16000, 8000, 1000, 320, 200, 100, 60, 16 ]
 
 # The device number specifies the offset in the enumerated devices to connect to.
 # Starts at 1
@@ -35,6 +36,8 @@ dev_num = 1
 
 test_wub_freq = 170
 semi_tone = 2**(1/12)
+
+deadzone_on = 1
 # Device endpoint filter lists (Name, (VID, PID))
 ep_lists = (
     (
@@ -227,10 +230,18 @@ def key_cb(event):
 
 # Haptic change of volume on touch (Duck when no touch)
     elif event.char == '=':
-        ui_root.trackpad_threshold_shift = not ui_root.trackpad_threshold_shift
+        filter = cntrlr_mgr.get_trackpad_filter_control()
+        filter = not filter
+        if filter:
+            logger.info('filter on')
+        else:
+            logger.info('filter off')
+        cntrlr_mgr.set_trackpad_filter_control(filter)
 
-        cntrlr_mgr.set_haptic_touch_duck(ui_root.trackpad_threshold_shift)
-        ui_root.test_control = cntrlr_mgr.get_test_control()
+        #ui_root.trackpad_threshold_shift = not ui_root.trackpad_threshold_shift
+
+        #cntrlr_mgr.set_haptic_touch_duck(ui_root.trackpad_threshold_shift)
+        #ui_root.test_control = cntrlr_mgr.get_test_control()
 
 # Debug
     elif event.char == 'D':
@@ -316,66 +327,40 @@ def key_cb(event):
 
     elif event.char == '0':
         cntrlr_mgr.haptic_off(2)
-
+    
     elif event.char == '1':
-
-        cntrlr_mgr.haptic_script( 1, 1, 0)
-        
-        #global haptic_channel
-
-        #global tmp_tone
-        #global tmp_delta
-        #logger.info("LFO:" + str(tmp_tone))
-        #cntrlr_mgr.haptic_lfo_tone(2, 0, 170, -1, tmp_tone * 1000, 100)
-        #if tmp_tone == 40 or tmp_tone == 4:
-        #    tmp_delta *= -1
-        #tmp_tone += tmp_delta     
+        cntrlr_mgr.haptic_tick(2, 1, 0)
 
     elif event.char == '2':
-        logger.info('FREQ: ' + str(ui_root.haptic_freq))
-        cntrlr_mgr.haptic_tone(1, -3, ui_root.haptic_freq, 200)
-        for i in range(3):
-            cntrlr_mgr.haptic_click(2, 3, 0)
-            sleep(0.05)
-        
-        ui_root.haptic_freq *= semi_tone
-        ui_root.haptic_freq = int(ui_root.haptic_freq)
-        if (ui_root.haptic_freq > 2000 ):
-            ui_root.haptic_freq = 50
-            
-    elif event.char == '3':
-        global haptic_ri
-        haptic_ri += 1
-        if haptic_ri > 16:
-            haptic_ri = 4
-        logger.info("Haptic ri to " + str(haptic_ri))
+        cntrlr_mgr.haptic_tick(2, 2, 0)
 
-        cntrlr_mgr.haptic_noise(1, haptic_ri, -3, 10000)
+    elif event.char == '3':
+        cntrlr_mgr.haptic_tick(2, 3, 0)
+
+        #global haptic_ri
+        #haptic_ri += 1
+        #if haptic_ri > 16:
+        #    haptic_ri = 4
+        #logger.info("Haptic ri to " + str(haptic_ri))
+
+        #cntrlr_mgr.haptic_noise(1, haptic_ri, -3, 10000)
     
     elif event.char == '4':
-        global test_wub_freq
-
-        logger.info('FREQ: ' + str(test_wub_freq) )
-
-        cntrlr_mgr.haptic_lfo_tone( 2, -6, test_wub_freq, 2000, 300, 100)
-        test_wub_freq = (int) (test_wub_freq * semi_tone)
-        if (test_wub_freq > 500 ):
-            test_wub_freq = 50
-
+        cntrlr_mgr.haptic_tick(2, 4, 0)
+    
+    elif event.keycode == 49:
+        cntrlr_mgr.haptic_click(2, 1, 0);
+    elif event.keycode == 50:
+        cntrlr_mgr.haptic_click(2, 2, 0);
+    elif event.keycode == 51:
+        cntrlr_mgr.haptic_click(2, 3, 0);
+    elif event.keycode == 52:
+        cntrlr_mgr.haptic_click(2, 4, 0);
 
     elif event.char == '5':
-        tone1_len = 80
-
-        tone2 = int( ui_root.haptic_freq * 1.5)
-        tone3 = ui_root.haptic_freq * 2
-
-        cntrlr_mgr.haptic_tone(1, -1, ui_root.haptic_freq, int( tone1_len* 1.5))
-        sleep(.121)
-        cntrlr_mgr.haptic_tone(1, -3, tone2, tone1_len)
-        sleep(.081)
-        cntrlr_mgr.haptic_tone(1, -4, tone3, tone1_len)        
-        
-        logger.info('FREQ: ' + str(ui_root.haptic_freq) + ' ' + str(tone2) + ' ' + str(tone3))
+        tone1_len = 250
+        cntrlr_mgr.haptic_tone(2, 0, ui_root.haptic_freq, int( tone1_len))        
+        logger.info('FREQ: ' + str(ui_root.haptic_freq))
 
         ui_root.haptic_freq *= semi_tone
         ui_root.haptic_freq = int(ui_root.haptic_freq)
@@ -384,118 +369,103 @@ def key_cb(event):
             ui_root.haptic_freq = 50    
 
     elif event.char == '6':
-        tone_len = 80
-        tone1 = 392
-        tone2 = int( tone1 * 1.5)
-        tone3 = tone1 * 2
-        cntrlr_mgr.haptic_tone(1, -3, tone1, tone_len)
-        sleep(.081)
-        cntrlr_mgr.haptic_tone(1, -3, tone2, tone_len)
-        sleep(.081)
-        cntrlr_mgr.haptic_tone(1, -3, tone3, tone_len)        
+        intensity = 32000
+        freql = freqr = 10000
+        cntrlr_mgr.haptic_simple_rumble(0, intensity, freql, freqr)
+        sleep(0.4)
+        cntrlr_mgr.haptic_simple_rumble(0, intensity, freql, freqr)
+        sleep(0.4)
+        cntrlr_mgr.haptic_simple_rumble(0, intensity, freql, freqr)
+        sleep(0.4)
+        cntrlr_mgr.haptic_simple_rumble(0, intensity, freql, freqr)   
         
     elif event.char == '7':
-        tone_len = 80
-        tone1 = 392
-        tone2 = int( tone1 * 1.333)
-        tone3 = tone1 * 2    
-        cntrlr_mgr.haptic_tone(1, -3, tone1, tone_len)
-        sleep(.081)
-        cntrlr_mgr.haptic_tone(1, -3, tone2, tone_len)       
-        
+        intensity = 1000
+        freql = freqr = 10000
+
+        cntrlr_mgr.haptic_simple_rumble(0, intensity, freql, freqr)
+        sleep(0.4)
+        cntrlr_mgr.haptic_simple_rumble(0, intensity, freql, freqr)
+        sleep(0.4)
+        cntrlr_mgr.haptic_simple_rumble(0, intensity, freql, freqr)
+        sleep(0.4)
+        cntrlr_mgr.haptic_simple_rumble(0, intensity, freql, freqr)
+
     elif event.char == '8':
-        tone_len = 80
-        tone1 = int(392 * 1.5)
-        tone2 = int(tone1 * (semi_tone ** 3))
-        tone3 = int(tone2 * (semi_tone ** 2))
+        global haptic_intenisty, haptic_intensity_idx
+        intensity = haptic_intenisty[haptic_intensity_idx]
+        logger.info("Haptic Intensity: {}".format(haptic_intenisty[haptic_intensity_idx]))
 
-        cntrlr_mgr.haptic_click(1, 2, 0)
-        cntrlr_mgr.haptic_tone(1, -3, tone1, tone_len)
-        sleep(.081)
-
-        cntrlr_mgr.haptic_click(1, 2, 0)
-        cntrlr_mgr.haptic_tone(1, -3, tone2, tone_len)
-        sleep(.081)
-
-        cntrlr_mgr.haptic_click(1, 2, 0)
-        cntrlr_mgr.haptic_tone(1, -3, tone3, tone_len)     
-
+        haptic_intensity_idx += 1
+        if haptic_intensity_idx > 7:
+            haptic_intensity_idx = 0
+        freql = freqr = 20000
+        for i in range(5):
+            cntrlr_mgr.haptic_simple_rumble(0, intensity, freql, freqr)
+            sleep(0.4)
+    
     elif event.char == '9':
-        sleep(0.003)
-        cntrlr_mgr.haptic_click(2, 4, 0)
-        sleep(0.140)
-        cntrlr_mgr.haptic_click(2, 4, 0)
-        sleep(1.450)
-        cntrlr_mgr.haptic_lfo_tone( 2, -5, 140, 1080, 500, 100)
+        cntrlr_mgr.haptic_script( 2, 1, 0)
+
+    elif event.keycode == 112:  # F1
+        logger.info(cntrlr_mgr.imu_selftest())
+    
+    elif event.keycode == 113:
+        global deadzone_on
+        deadzone_on = 1 - deadzone_on
+        if deadzone_on:
+            cntrlr_mgr.set_stick_deadzone(4000)
+        else:
+            cntrlr_mgr.set_stick_deadzone(0)
+
+    elif event.keycode == 114:
+        logger.info(cntrlr_mgr.get_device_info(1))
+
 
     elif event.char == ';':
+#       cntrlr_mgr.set_stick_deadzone(2000)
+#        logger.info(cntrlr_mgr.get_stick_deadzone())
+#       logger.info(cntrlr_mgr.user_data_get())
         #cntrlr_mgr.haptic_tick(2, 2, 0)
 #        cntrlr_mgr.haptic_enable(1);
 #        cntrlr_mgr.haptic_cmd(0, 2, 2, 0 )
-        logger.info(cntrlr_mgr.imu_get_type())
-        #logger.info(cntrlr_mgr.imu_get_full_cal())
-
-  #      logger.info('Left:  ' + str(cntrlr_mgr.get_usage(0)))
-  #      logger.info('Right: ' + str(cntrlr_mgr.get_usage(1)))
+  
+       logger.info(cntrlr_mgr.imu_get_type())
+       logger.info(cntrlr_mgr.imu_get_cal())
    #     cntrlr_mgr.trackpad_set_raw_data_mode(0x4)
-        #logger.info(cntrlr_mgr.rushmore_get_z_values())
- #       logger.info(cntrlr_mgr.imu_get_selftest_results())
- #       logger.info(cntrlr_mgr.imu_get_full_cal())
-        #logger.info(cntrlr_mgr.imu_get_type())
-      #  cal =  cntrlr_mgr.rushmore_get_factory_cal(8880)
-      #  logger.info('Side: 0' + os.linesep + cntrlr_mgr.rushmore_cal_to_str(cal))
-        
-      #  cal =  cntrlr_mgr.rushmore_get_factory_cal(1)
-      #  logger.info('Side: 1' + os.linesep + cntrlr_mgr.rushmore_cal_to_str(cal))
-        
-
 #        logger.info(cntrlr_mgr.get_raw_trackpad_data())
-  #      logger.info(cntrlr_mgr.pressure_get_cal(0))
-  #      logger.info(cntrlr_mgr.pressure_get_cal(1))
-        #logger.info(cntrlr_mgr.thumbstick_get_cal(0));
-        #logger.info(cntrlr_mgr.thumbstick_get_cal(1));
-  #      logger.info(cntrlr_mgr.trigger_get_cal(0));
-  #      logger.info(cntrlr_mgr.trigger_get_cal(1));
 
-    # cntrlr_mgr.capsense_calibrate(1, 0)
+
+
     elif event.char == '/':
-#        cntrlr_mgr.clear_usage(0)
- #       logger.info(cntrlr_mgr.get_device_info(1))
-#        logger.info(cntrlr_mgr.imu_get_type())
         cntrlr_mgr.imu_set_type(0)
 
     elif event.char == ':':
+        cntrlr_mgr.user_data_set(0x01, 0) # Version 0x01
         #cntrlr_mgr.haptic_enable(0);
-        cntrlr_mgr.imu_set_type(1)
+        #cntrlr_mgr.imu_set_type(1)
 #       cntrlr_mgr.trigger_set_cal( 1, 1234, 587, 0 );
 #       cntrlr_mgr.pressure_set_cal( 1, 199, 1, 1000, 0x00 )
 #        cntrlr_mgr.thumbstick_set_cal( 0, 111, 222, 333, 114, 55, 665, 777, 888 )
       # cntrlr_mgr.trigger_set_cal( 1, 433, 136, 1 );
 
-      #  cntrlr_mgr.trackpad_set_cal( 0, 33, 33, 4444, 400, 4222)
-      #  cntrlr_mgr.trackpad_set_cal( 0, 22, 200, 300, 400, 500)
-
     elif event.char == '"':
-#        cntrlr_mgr.haptic_enable(2);
  #       cntrlr_mgr.persist_cal(0, 0x17)
  #       cntrlr_mgr.persist_cal(1, 0x17)
 #        cntrlr_mgr.persist_cal( 1, 0x04 )  #Persist Pressure
 #       cntrlr_mgr.persist_cal( 0, 0x02 )  #Persist Thumbstick
 #      cntrlr_mgr.persist_cal( 1, 0x01 )  #Persist Trigger
-       cntrlr_mgr.persist_cal( 1, 0x10 )  #Persist IMU
+#       cntrlr_mgr.persist_cal( 1, 0x10 )  #Persist IMU
+       cntrlr_mgr.persist_cal( 1, 0x20 )  #Persist USER
 
     elif event.char == '\\':
-        cntrlr_mgr.imu_set_cal( 100, -120, 120, 200, 100, 100)
+        cntrlr_mgr.imu_set_cal( 1, 2, 3, 4, 5, 6)
 
     elif event.char == '{':
-        logger.info(cntrlr_mgr.trackpad_get_cal(0))
-        logger.info(cntrlr_mgr.trackpad_get_cal(1))
+        cntrlr_mgr.user_data_set(0x01, 1)
 
     elif event.char == '}':
-        cntrlr_mgr.trackpad_set_cal(0,  -10, 250, 3850, 200, 3850)
-        cntrlr_mgr.trackpad_set_cal(1,  0, 250, 3850, 200, 3900)
-        cntrlr_mgr.persist_cal( 0, 0x08 )  #Persist trackpad cal
-        cntrlr_mgr.persist_cal( 1, 0x08 )  #Persist trackpad cal
+        cntrlr_mgr.user_data_set(0x01, 2)
 
     elif event.char == '&':
         ui_root.haptic_ui_intensity += 1
@@ -590,7 +560,7 @@ def key_cb(event):
         if zoom == 1:
             ui_root.set_trackpad_zoom( 2 )
         else:
-            ui_root.set_trackpad_zoom ( 1 )
+            ui_root.set_trackpad_zoom( 1 )
 
 # IMU
     elif event.char == 'g':
@@ -651,7 +621,17 @@ def key_cb(event):
 # Thumbstick Command
     elif event.char == 'j':
         ui_root.thumbstick_raw_mode = 1 - ui_root.thumbstick_raw_mode
+
         cntrlr_mgr.thumbstick_set_raw(ui_root.thumbstick_raw_mode)
+        if ui_root.thumbstick_raw_mode:
+            cntrlr_mgr.set_stick_deadzone(0)
+            ui_root.set_thumbstick_zoom(16)
+            ui_root.set_thumbstick_offset(-2048)
+        else:
+            cntrlr_mgr.set_stick_deadzone(4000)
+            ui_root.set_thumbstick_zoom(1)
+            ui_root.set_thumbstick_offset(0)
+
 
     elif event.char == 'J':
         if not debug_mode: 
@@ -682,8 +662,6 @@ def key_cb(event):
         display_help_dialog()
 
     elif event.char == 'q':
-        mouse_kbd_on = 1
-        cntrlr_mgr.mouse_kbd_control(mouse_kbd_on)
         root.destroy()
 
     elif event.char == 'H':
@@ -726,9 +704,6 @@ def key_cb(event):
         logger.info('Trigger L Cal:    ' + str(cntrlr_mgr.trigger_get_cal(0)))
         logger.info('Trigger R Cal:    ' + str(cntrlr_mgr.trigger_get_cal(1)))
 
-        logger.info('Trackpad L Cal:    ' + str(cntrlr_mgr.trackpad_get_cal(0)))
-        logger.info('Trackpad R Cal:    ' + str(cntrlr_mgr.trackpad_get_cal(1)))
-
     elif event.char == 'x':
         logger.info(cntrlr_mgr.imu_get_temp())
 
@@ -743,7 +718,6 @@ def key_cb(event):
         logger.info('Rushmore Failure:     '    + str(rushmore_fail) )
         logger.info('IMU Failure:          '    + str(imu_fail) )
         logger.info('Sensor Cal Failure:   0x{:02X}'.format(sensor_cal_fail))
-
     
     elif event.char == '[':
         ui_root.haptic_gain -= 1
@@ -756,6 +730,12 @@ def key_cb(event):
         if ui_root.haptic_gain > 6:
             ui_root.haptic_gain = 6
         cntrlr_mgr.set_setting(76, ui_root.haptic_gain)
+
+    elif event.keycode == 114: #F3 
+        logger.info(cntrlr_mgr.imu_get_full_cal())
+
+    else:
+        logger.info('Got keycode: ' + str(event.keycode))
 
 ##########################################################################################################
 ## BEGIN HELPER METHODS
@@ -894,5 +874,9 @@ root.bind('<Control-Key-d>', toggle_debug_mode_cb)
 
 canvas.pack()
 Tk.mainloop()
+
+logger.info("Exiting")
+cntrlr_mgr.mouse_kbd_control(1)
+cntrlr_mgr.sys_steamwatchdog(1)
 
 cntrlr_mgr.shutdown()

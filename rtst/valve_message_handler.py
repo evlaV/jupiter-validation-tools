@@ -6,8 +6,8 @@ import logging
 import statistics
 import collections
 
-__version__ = "$Revision: #29 $"
-__date__ = "$DateTime: 2021/11/01 13:41:03 $"
+__version__ = "$Revision: #32 $"
+__date__ = "$DateTime: 2022/06/29 11:08:41 $"
 
 valve_messages = {
 
@@ -274,6 +274,8 @@ class ValveMessageHandler:
         self.rushmore_raw_data = []
         self.data_last_packet_num = 0 
 
+        self.stick_deadzone = 4000
+
         self.l_x_history = collections.deque(maxlen = self.len_history)
         self.l_y_history = collections.deque(maxlen = self.len_history)
         self.r_x_history = collections.deque(maxlen = self.len_history)
@@ -291,6 +293,9 @@ class ValveMessageHandler:
         self.l_y_history.append(0)
         self.r_x_history.append(0)
         self.r_y_history.append(0)
+
+    def set_stick_deadzone(self, dz):
+        self.stick_deadzone = dz
 
     def clear_data(self):
         self.last_data = {}
@@ -384,6 +389,22 @@ class ValveMessageHandler:
                 result['r_x_stdev'] = round(math.log2(statistics.stdev(self.r_x_history)+1)*10)
                 result['r_y_stdev'] = round(math.log2(statistics.stdev(self.r_y_history)+1)*10)
 
+            # Set max thumbstick deadzone to +/- 4K counts.
+            MAX_DZ = self.stick_deadzone
+            result['dz_left_stick_x'] = result['left_stick_x']
+            result['dz_left_stick_y'] = result['left_stick_y']
+            result['dz_right_stick_x'] = result['right_stick_x']
+            result['dz_right_stick_y'] = result['right_stick_y']
+
+            if result['dz_left_stick_x'] < MAX_DZ and result['dz_left_stick_x'] > -MAX_DZ and \
+                result['dz_left_stick_y'] < MAX_DZ and result['dz_left_stick_y'] > -MAX_DZ:
+                    result['dz_left_stick_x'] = 0
+                    result['dz_left_stick_y'] = 0
+
+            if result['dz_right_stick_x'] < MAX_DZ and result['dz_right_stick_x'] > -MAX_DZ and \
+                result['dz_right_stick_y'] < MAX_DZ and result['dz_right_stick_y'] > -MAX_DZ:
+                    result['dz_right_stick_x'] = 0
+                    result['dz_right_stick_y'] = 0            
 
             ## Filter left_debug / right_debug max
             #if 'left_debug' in result:

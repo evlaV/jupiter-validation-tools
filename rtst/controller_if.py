@@ -100,6 +100,20 @@ class ControllerInterface:
             test_control &= 0xFB
         self.set_setting(75, test_control)
 
+    def get_trackpad_filter_control(self):
+        return self.get_setting(65)
+
+    def set_trackpad_filter_control(self, on):
+        if on:
+            self.set_setting(65, 1)
+        else:
+            self.set_setting(65, 0)
+   
+    def set_stick_deadzone(self, dz):
+        self.hid_dev_mgr.msg_handler.stick_deadzone = dz
+
+    def get_stick_deadzone(self):
+        return self.hid_dev_mgr.msg_handler.stick_deadzone
 
     # Set the system framerate
     def sys_set_framerate(self, framerate):
@@ -311,7 +325,7 @@ class ControllerInterface:
                 return None
 
             (reported_side, rowset) = struct.unpack('=2B', report_bytes[0:2])
-            rowdata = struct.unpack('=16H', report_bytes[2:])
+            rowdata = struct.unpack('=16h', report_bytes[2:])
             fulldata += rowdata
        
         # Returned data is complete backwards and transposed. 
@@ -341,7 +355,7 @@ class ControllerInterface:
                 return None
 
             (reported_side, rowset) = struct.unpack('=2B', report_bytes[0:2])
-            rowdata = struct.unpack('=16H', report_bytes[2:])
+            rowdata = struct.unpack('=16h', report_bytes[2:])
             fulldata += rowdata
         # Returned data is complete backwards and transposed. 
         fulldata = fulldata[::-1] 
@@ -426,30 +440,59 @@ class ControllerInterface:
         if not report_length or report_type != op:
             return None
 
-        (side, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type) = struct.unpack('=B3b3hb', report_bytes)
-        return side, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type
+        new_imu_layout = '=B3b3hb6h'
+        old_imu_layout = '=B3b3hb'
+        new_len = struct.calcsize(new_imu_layout)
+        old_len = struct.calcsize(old_imu_layout)
+
+        if report_length == old_len:
+            logger.info('old');
+            (side, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type) = \
+                struct.unpack(old_imu_layout, report_bytes)
+            invn_acc_x = invn_acc_y = invn_acc_z = invn_gyro_x = invn_gyro_y = invn_gyro_z = 0
+        else:
+            (side, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, \
+                imu_type,\
+                invn_acc_x, invn_acc_y, invn_acc_z, invn_gyro_x, invn_gyro_y, invn_gyro_z) = \
+                struct.unpack(new_imu_layout, report_bytes)
+
+        return side, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type, \
+            invn_acc_x, invn_acc_y, invn_acc_z, invn_gyro_x, invn_gyro_y, invn_gyro_z
     
     def imu_get_cal(self):
-        (side, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, _) = self.imu_get_full_cal()
-        return side, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z
+        (side, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, \
+            imu_type, invn_acc_x, invn_acc_y, invn_acc_z, invn_gyro_x, invn_gyro_y, invn_gyro_z) = \
+           self.imu_get_full_cal()
+        if imu_type == 0:
+            return side, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z
+        else:
+            return side, invn_acc_x, invn_acc_y, invn_acc_z, invn_gyro_x, invn_gyro_y, invn_gyro_z
 
-    def imu_set_full_cal(self, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type):
+    def imu_set_full_cal(self, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type, \
+        invn_acc_x, invn_acc_y, invn_acc_z, invn_gyro_x, invn_gyro_y, invn_gyro_z ):
         op = 0xE7
-        report_bytes = struct.pack('=4b3hb', 1, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type)
+        report_bytes = struct.pack('=B3b3hb6h', 1, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type, \
+            invn_acc_x, invn_acc_y, invn_acc_z, invn_gyro_x, invn_gyro_y, invn_gyro_z)
 
         self.hid_dev_mgr.send_feature_report(op, report_bytes)     
 
-    def imu_set_cal(self, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z):
-        (_, _, _, _, _, _, _, imu_type) = self.imu_get_full_cal()
-        self.imu_set_full_cal (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type)
+    def imu_set_cal(self, new_acc_x, new_acc_y, new_acc_z, new_gyro_x, new_gyro_y, new_gyro_z):
+        (_, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type, \
+            invv_acc_x, invn_acc_y, invn_acc_z, invn_gyro_x, invn_gyro_y, invn_gyro_z) = self.imu_get_full_cal()
+        if imu_type == 0:
+            self.imu_set_full_cal(new_acc_x, new_acc_y, new_acc_z, new_gyro_x, new_gyro_y, new_gyro_z, imu_type, \
+                invv_acc_x, invn_acc_y, invn_acc_z, invn_gyro_x, invn_gyro_y, invn_gyro_z)
+        else:
+            self.imu_set_full_cal (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type, \
+                new_acc_x, new_acc_y, new_acc_z, new_gyro_x, new_gyro_y, new_gyro_z)
 
     def imu_get_type(self):
-        (_, _, _, _, _, _, _, imu_type) = self.imu_get_full_cal()
+        (_, _, _, _, _, _, _, imu_type, _, _, _, _, _, _ ) = self.imu_get_full_cal()
         return imu_type, 'Invensense' if imu_type ==1 else 'Bosch'
 
     def imu_set_type(self, imu_type):
-        (_, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, _) = self.imu_get_full_cal()
-        self.imu_set_full_cal (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type)
+        (_, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, _, invn_acc_x, invn_acc_y, invn_acc_z, invn_gyro_x, invn_gyro_y, invn_gyro_z) = self.imu_get_full_cal()
+        self.imu_set_full_cal (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, imu_type, invn_acc_x, invn_acc_y, invn_acc_z, invn_gyro_x, invn_gyro_y, invn_gyro_z)
 
     ##########################################################################################################
     ## Thumbstick 
@@ -569,6 +612,29 @@ class ControllerInterface:
     def pressure_get_pressure_threshold(self, side):
         return self.get_setting(52 + side)
 
+
+    ##########################################################################################################
+    ## Pressure 
+    ##########################################################################################################
+    def user_data_get(self):
+        op = 0xDB
+        report_bytes = ''
+
+        self.hid_dev_mgr.send_feature_report(op, report_bytes)
+        # Retrieve and parse the result.
+        report_type, report_length, report_bytes = self.hid_dev_mgr.get_feature_report()
+
+        if not report_length or report_type != op:
+                return None
+
+        version, boot_tone_level = struct.unpack('=2B', report_bytes)
+        return version, boot_tone_level
+
+    def user_data_set(self, version, boot_tone_level):
+        op = 0xDC
+        report_bytes = struct.pack('=2B', version, boot_tone_level)
+        self.hid_dev_mgr.send_feature_report(op, report_bytes)
+
     ##########################################################################################################
     ## Persist calibration (bitmask per below) / side = 0=L, 1=R
     #		BITMASK_PERSIST_TRIGGER		0x01
@@ -576,6 +642,7 @@ class ControllerInterface:
     #		BITMASK_PERSIST_PRESSURE	0x04
     #		BITMASK_PERSIST_TRACKPAD	0x08
     #		BITMASK_PERSIST_IMU			0x10
+    #       BITMASK_PERSIST_USER_DATA   0x20
     ##########################################################################################################
     def persist_cal(self, side, bitmask):
         op = 0xE2
@@ -638,6 +705,18 @@ class ControllerInterface:
     def clear_mappings(self):
         self.logger.info('clear mappings')
         feature_report_type = 0x81
+        report_bytes = struct.pack('')
+        self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
+
+    def load_default_mappings(self):
+        self.logger.info('load default mappings')
+        feature_report_type = 0x85
+        report_bytes = struct.pack('')
+        self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
+
+    def load_default_settings(self):
+        self.logger.info('load default settings')
+        feature_report_type = 0x8E
         report_bytes = struct.pack('')
         self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)
 
@@ -998,4 +1077,10 @@ class ControllerInterface:
         else:
             return (None, None)
 
-  
+    ##########################################################################################################
+    ## Developer testing 
+    ##########################################################################################################
+    def fault_injection(self, type):
+        feature_report_type = 0xff
+        report_bytes = struct.pack('=1B', type)
+        self.hid_dev_mgr.send_feature_report(feature_report_type, report_bytes)

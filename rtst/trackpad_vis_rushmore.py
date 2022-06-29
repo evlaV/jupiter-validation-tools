@@ -672,6 +672,7 @@ class TrackpadVis():
     ## Main Tick
     ############################################################################################################
     def tick( self ):
+        gotdata = False
         if self.cntrlr_mgr.is_open(): 
             for pad_num in range(self.num_pads):
                 device_data = self.cntrlr_mgr.get_data()
@@ -679,6 +680,7 @@ class TrackpadVis():
                 if not ('rushmore_raw_data') in device_data:
                     continue
 
+                gotdata = True
                 # Values come in reversed.
                 raw_values = np.array( device_data['rushmore_raw_data'], dtype=np.float32)
                 raw_values = raw_values[::-1]
@@ -691,22 +693,23 @@ class TrackpadVis():
                     self.last_packet_num = packet_num
                     self.tick_job = self.root.after( self.args.tick, self.tick )        
                     return
+            
+            if gotdata:
+                self.compute_collapsed_values(pad_num, raw_values)
+                self.compute_total_mag(pad_num, raw_values)
+                self.compute_pos(pad_num, raw_values)
+                self.compute_z_corrected_val(pad_num, raw_values)
 
-            self.compute_collapsed_values(pad_num, raw_values)
-            self.compute_total_mag(pad_num, raw_values)
-            self.compute_pos(pad_num, raw_values)
-            self.compute_z_corrected_val(pad_num, raw_values)
-
-            self.compute_finger_down(pad_num, raw_values)
+                self.compute_finger_down(pad_num, raw_values)
             
 
-            ## Drawing
-            self.draw_grid(pad_num, raw_values)
-            self.draw_collapsed_xy(pad_num, raw_values)
-            self.draw_pos_dot(pad_num, raw_values)
-            self.draw_line_graphs(pad_num, raw_values)
-            self.draw_z_history_text(pad_num, raw_values)
-            self.draw_z_history_graph(pad_num, raw_values)
+                ## Drawing
+                self.draw_grid(pad_num, raw_values)
+                self.draw_collapsed_xy(pad_num, raw_values)
+                self.draw_pos_dot(pad_num, raw_values)
+                self.draw_line_graphs(pad_num, raw_values)
+                self.draw_z_history_text(pad_num, raw_values)
+                self.draw_z_history_graph(pad_num, raw_values)
 
                                       
         self.tick_job = self.root.after( self.args.tick, self.tick )        
@@ -721,7 +724,10 @@ def key_cb( event ):
         cntrlr_mgr.restart()
     elif event.char == 's':
         vioos.trackpad = 1 - vioos.trackpad
-        cntrlr_mgr.trackpad_set_raw_data_mode(1 << vioos.trackpad )
+        if vioos.trackpad == 1:
+            cntrlr_mgr.trackpad_set_raw_data_mode(4)
+        else:
+            cntrlr_mgr.trackpad_set_raw_data_mode(8)
     elif event.char == 'q':
         root.destroy()
 
@@ -735,10 +741,10 @@ def connect_cb(hid_dev_mgr):
     cntrlr_mgr.set_imu_mode(0)
 
     #Lower Frame rate
-    cntrlr_mgr.sys_set_framerate(8)
+    cntrlr_mgr.sys_set_framerate(12)
 
     # Enable raw data for Rushmore (only right trackpad)
-    cntrlr_mgr.trackpad_set_raw_data_mode(4)
+    cntrlr_mgr.trackpad_set_raw_data_mode(8)
 
     # Enable status messages
     cntrlr_mgr.set_setting(49, 2)	
