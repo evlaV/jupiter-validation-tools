@@ -13,5 +13,6 @@ StartupNotify=true
 Terminal=true
 TerminalOptions=
 Type=Application
+Categories=Development;Game;
 X-KDE-SubstituteUID=false
 X-KDE-Username=
