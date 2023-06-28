@@ -1,0 +1,17 @@
+[Desktop Entry]
+Comment[en_CA]=
+Comment=
+Exec=python /usr/share/jupiter-validation-tools/rtst/jupiter_realtime_status.py
+GenericName[en_CA]=
+GenericName=
+Icon=preferences-desktop-gaming
+MimeType=
+Name[en_CA]=rtst
+Name=rtst
+Path=/home/deck/Desktop
+StartupNotify=true
+Terminal=true
+TerminalOptions=
+Type=Application
+X-KDE-SubstituteUID=false
+X-KDE-Username=
