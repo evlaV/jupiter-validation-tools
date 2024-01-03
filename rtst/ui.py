@@ -2,6 +2,7 @@ import tkinter as Tk
 import time
 import logging
 import gzip
+from textwrap import dedent
 from loc_strings import loc_strings
 
 highlight = False
@@ -509,10 +510,10 @@ class UIRoot:
             "data_xform_funcs" :
                 (),
             "data_fields" : (
-                'left_stick_x',
-                'left_stick_y',
-                'right_stick_x',
-                'right_stick_y',
+                'dz_left_stick_x',
+                'dz_left_stick_y',
+                'dz_right_stick_x',
+                'dz_right_stick_y',
             ),
             "line_eqs" : (
                 #( 0, 32767.0 * (( 510 - 80 ) - 300)/(700-300) ), # secondary slope,
@@ -604,8 +605,14 @@ class UIRoot:
                 (.4 , .6),
                 (.4 , .6),
             ),
-            "data_xform_funcs" :
-            (),
+            "data_xform_funcs" : (
+               (lambda x: self.imu_acc_unit_conv(x)),
+               (lambda x: self.imu_acc_unit_conv(x)),
+               (lambda x: self.imu_acc_unit_conv(x)),
+               (lambda x: self.imu_gyr_unit_conv(x)),
+               (lambda x: self.imu_gyr_unit_conv(x)),
+               (lambda x: self.imu_gyr_unit_conv(x)), 
+            ),
             "data_fields" : (
                 'accel_x',
                 'accel_y',
@@ -646,8 +653,7 @@ class UIRoot:
                 (.5 , .6),	
                 (.5 , .6),
             ),
-            "data_xform_funcs" :
-            (),
+            "data_xform_funcs" : (),
             "data_fields" : (
                 'gyro_quat_w',
                 'gyro_quat_x',
@@ -900,6 +906,7 @@ class UIRoot:
                 self.get_loc_str('Raw Trackpad Data'),
                 self.get_loc_str('Debug Mode'),
                 'Control Lockout',
+                "IMU Raw Mode"
             ),
             "ranges" :	(
                 (0, 2),
@@ -908,6 +915,7 @@ class UIRoot:
                 (0, 0xF),
                 (0, 1),
                 (0, 1),
+                (0, 2),
             ),
             "trigger_limits" : None,
             "data_xform_funcs" : (
@@ -917,8 +925,10 @@ class UIRoot:
                 (lambda x: self.raw_trackpad_mode),
                 (lambda x: self.debug_mode),
                 (lambda x: self.get_test_control()),
+                (lambda x: self.imu_raw),
             ),
             "data_fields" : (
+                None,
                 None,
                 None,
                 None,
@@ -1009,6 +1019,7 @@ class UIRoot:
         self.pressure_raw = 0
         self.trigger_raw = 0
         self.thumbstick_raw_mode = 0
+        self.imu_raw = 0
         self.trackpad_clipping = 1
         self.trackpad_filt = 1
         self.raw_trackpad_mode = 0
@@ -1046,6 +1057,8 @@ class UIRoot:
         self.control_lockout = 1
         self.trackpad_threshold_shift = 1
 
+        self.imu_phys_units = 0
+
     def connected(self):
         self.rushmore_noise_threshold = self.cntrlr_mgr.get_setting(51)
         self.trackpad_framerate = self.cntrlr_mgr.get_setting(64)
@@ -1060,8 +1073,8 @@ class UIRoot:
         self.haptic_ui_intensity =  self.cntrlr_mgr.get_setting(65)
         self.test_control = self.cntrlr_mgr.get_test_control()
         self.haptic_ui_intensity = self.cntrlr_mgr.get_setting(79)
-
-
+        self.debug_display_mode = self.cntrlr_mgr.get_setting(67)
+        self.imu_raw = self.cntrlr_mgr.get_imu_raw_mode()
 
     def get_debug_display_mode( self ):
         return self.debug_display_mode
@@ -1127,6 +1140,8 @@ class UIRoot:
     def log_data(self, data):
         if self.logfile is None:
             return False
+        if not data:
+            return True
 
         # Check if we've come around too soon and the packet hasn't updated. If so, then ignore. 
         # Return True to indicate that we're still in logging state.
@@ -1206,6 +1221,18 @@ class UIRoot:
         if self.tick_interval > 40:
             self.tick_interval = 2
 
+    def imu_acc_unit_conv(self, x):
+        if self.imu_phys_units:
+            return round(x * 2 * 9.8 / 32768, 1)
+        else:
+            return x
+
+    def imu_gyr_unit_conv(self, x):
+        if self.imu_phys_units:
+            return round(x * 2000 / 32768, 1)
+        else:
+            return x
+
     def get_rushmore_noise_threshold(self):
         return self.rushmore_noise_threshold
     
@@ -1275,7 +1302,6 @@ class UIRoot:
             self.device_str_info['unit_serial'] = cached
 
         return cached
-
 
     def get_tp_id(self, unit):
         if unit == 1:
@@ -1393,10 +1419,30 @@ class UIRoot:
             name = 'HYBRID(R) D21'
         elif hw_id == 31:
             name = 'HOMOG(R or L) D21'
+        elif hw_id == 32:
+            name = 'GAL D21 RUSH MFSC'
+        elif hw_id == 33:
+            name = 'GAL D21 RUSH QFSC'
+        elif hw_id == 34:
+            name = 'GAL NFF D21 RUSH MFSC'
         elif hw_id == 40:
-            name = 'NFF V4 (REN)'
+            name = 'NFF RA RUSH'
         elif hw_id == 41:
-            name = 'MONO (REN)'
+            name = 'JUP RA RUSH'
+        elif hw_id == 42:
+            name = 'GAL NFF RA RUSH'
+        elif hw_id == 43:
+            name = 'GAL NFF RA TIMP'
+        elif hw_id == 44:
+            name = 'GAL RA RUSH MFSC'
+        elif hw_id == 45:
+            name = 'GAL RA RUSH QFSC'
+        elif hw_id == 46:
+            name = 'GAL RA TIMP MFSC'
+        elif hw_id == 47:
+            name = 'GAL RA TIMP QFSC'
+        elif hw_id == 48:
+            name = 'DECK CTRLR RA TIMP MFSC'
         elif hw_id:
             name = 'Unknown (%d)' % hw_id
         elif hw_id == None:
@@ -1527,7 +1573,6 @@ class UIRoot:
             
         self.tick_job = self.root.after(self.tick_interval_ms, self.tick)
 
-
     def get_size(self):
         # add up the widths of the previous columns to set the origin for the next
         x_sum = 0
@@ -1546,7 +1591,133 @@ class UIRoot:
     def set_current_ep(self, ep):
         self.current_ep = ep
 
-        
+class UIHelp:
+    help_string_left = dedent('''\
+        LOGGING
+        l\tEnable logging
+        c\tEnable log compression
+
+        DISPLAY ACTIVITY TRIGGERING
+        H\tToggle Limit Triggering
+        ^d\tToggle 'Debug' Mode
+        '`'\tToggle Control Lockout
+        '~'\tToggle Threshold Shift 
+
+        USB
+        m\tToggle HID Mouse / Kbd messages
+        D\tCycle through trackpad debug modes (Off, L Pad, R Pad)
+
+        SYSTEM
+        d\tSelect connected controllers (current limit 2)
+        v\tToggle device type filter
+        r\trestart connection
+        b\treboot connected device
+        B\treboot connected device into bootloader
+        q\tquit
+
+        RUSHMORE CAPSENSE
+        n / N\t Decrease / increase Rushmore touch threshold
+        o / O\t Decrease / increase Rushmore no touch threshold
+        y / Y\t Decrease / increase Rushmroe noise floor (for centroid)
+        s / S\tDecrease / increase Rushmore noise threshold
+        M\t Dump Rushmore trackpad calibration data
+        $\t Toggle Rushmore frequency hopping
+
+        D21 CAPSENSE
+        *\tToggle Frequency Hopping mode
+
+        IMU
+        g\tIncrement IMU mode
+        G\tRun IMU calibration (Bosch Only)
+        L\tToggle IMU Debug modes (0=normal, 1=no SF, 2=No SF, No Factory Cal)
+        R\tToggle IMU Physical units (m/s^2, dps)
+    ''')
+    help_string_right = dedent('''\
+        HAPTICS
+        f\tEnable haptics
+        F\tSwitch haptics Left / Right
+        w/W\tDecrease / increase haptic frequency
+        e/E\tIncrement haptics repeat count
+        z/Z\tDecrement / increment duty cycle percent
+        E\tIncrement haptics loop interval
+        L\tStop all haptics
+        0\tStop all haptics
+        &\tChange UI-type haptic intensity
+        [ / ]\tDecrease / increase DAC haptic gain (dB)
+
+        JOYSTICK
+        j\tThumbstick:  Raw mode toggle
+        J\tThumbstick:  Calibration (3 steps)
+        ^j\tThumbstick: Cancel calibration
+        < / >\tThumbstick touch threshold up / down
+
+        TRIGGER
+        t\tTrigger: Raw mode toggle
+        T\tTrigger: Calibration (3 steps)
+        ^t\tTrigger: Cancel calibration
+        k / K\tTrigger:Decrease / increase threshold
+
+        TRACKPAD
+        u / U \tDecrease / Increase frame rate
+        i\tToggle trackpad clipping
+        $ Turn off Rushmore freq hoppin (sets noise threshold to 0)
+        o / O \tDecrease / increase centroid threshold
+        / / ?\tDecrease / increase hysteresis
+        a\tCalibrate trackpads
+        A\tDisplay trackpad calibration (Not implemented)
+
+        PRESSURE
+        p\tPressure: Raw mode toggle
+        P\tPressure: Calibration (3 steps)
+        ^p\tPressure: Cancel calibration
+        ''')
+
+    def __init__(self, ui_root, version, date) -> None:
+        global color_pallete
+        self.TEXT_PADDING = '6'
+        self.ui_root = ui_root
+        self.version = version
+        self.date = date
+
+        self.is_open = False
+        self.__create()
+
+    def catch_close(self):
+        self.hide()
+
+    def __create(self):
+        self.Help = Tk.Toplevel()
+        self.Help.attributes('-topmost', True)
+        self.Help.resizable(False, False)
+
+        self.Help.title(f'RTST Help Menu - Revision: {self.version[12:-1]}   Date: {self.date[12:-2]}')
+
+        frame_left = Tk.Frame(self.Help, bd=2, relief=Tk.RAISED, bg=color_pallete[1])
+        frame_right = Tk.Frame(self.Help, bd=2, relief=Tk.RAISED, bg=color_pallete[1])
+
+        help_left = self.__help_label(frame_left, self.help_string_left)
+        help_left.pack()
+
+        help_right = self.__help_label(frame_right, self.help_string_right)
+        help_right.pack()
+
+        frame_left.grid(row=0, column=0, sticky='ns')
+        frame_right.grid(row=0, column=1, sticky='ns')
+        self.Help.protocol("WM_DELETE_WINDOW", self.catch_close)
+        self.Help.withdraw()
+
+    def __help_label(self, frame, content):
+        return Tk.Label(frame, bg=color_pallete[0], fg=color_pallete[2], text=content,
+                        font=ui_fonts['twl_label'], justify='left', padx=self.TEXT_PADDING, pady=self.TEXT_PADDING)
+
+    def show(self):
+        self.Help.deiconify()
+        self.is_open = True
+
+    def hide(self):
+        self.Help.withdraw()
+        self.is_open = False
+
 ##########################################################################################################################################
 ## Widgets
 ##########################################################################################################################################

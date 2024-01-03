@@ -389,30 +389,22 @@ class ValveMessageHandler:
                 result['r_x_stdev'] = round(math.log2(statistics.stdev(self.r_x_history)+1)*10)
                 result['r_y_stdev'] = round(math.log2(statistics.stdev(self.r_y_history)+1)*10)
 
-            # Set max thumbstick deadzone to +/- 4K counts.
-            MAX_DZ = self.stick_deadzone
             result['dz_left_stick_x'] = result['left_stick_x']
             result['dz_left_stick_y'] = result['left_stick_y']
             result['dz_right_stick_x'] = result['right_stick_x']
             result['dz_right_stick_y'] = result['right_stick_y']
 
-            if result['dz_left_stick_x'] < MAX_DZ and result['dz_left_stick_x'] > -MAX_DZ and \
-                result['dz_left_stick_y'] < MAX_DZ and result['dz_left_stick_y'] > -MAX_DZ:
-                    result['dz_left_stick_x'] = 0
-                    result['dz_left_stick_y'] = 0
+            # Deadzone applied.  Change True to False to disable RTST deadzoning of sticks
+            if True:
+                if result['dz_left_stick_x'] < self.stick_deadzone and result['dz_left_stick_x'] > -self.stick_deadzone and \
+                    result['dz_left_stick_y'] < self.stick_deadzone and result['dz_left_stick_y'] > -self.stick_deadzone:
+                        result['dz_left_stick_x'] = 0
+                        result['dz_left_stick_y'] = 0
 
-            if result['dz_right_stick_x'] < MAX_DZ and result['dz_right_stick_x'] > -MAX_DZ and \
-                result['dz_right_stick_y'] < MAX_DZ and result['dz_right_stick_y'] > -MAX_DZ:
-                    result['dz_right_stick_x'] = 0
-                    result['dz_right_stick_y'] = 0            
-
-            ## Filter left_debug / right_debug max
-            #if 'left_debug' in result:
-            #    self.left_debug_history.append(result['left_debug'] )
-            #    self.right_debug_history.append(result['right_debug'] )
-
-            #    result['left_debug'] = max(self.left_debug_history)
-            #    result['right_debug'] = max(self.right_debug_history)
+                if result['dz_right_stick_x'] < self.stick_deadzone and result['dz_right_stick_x'] > -self.stick_deadzone and \
+                    result['dz_right_stick_y'] < self.stick_deadzone and result['dz_right_stick_y'] > -self.stick_deadzone:
+                        result['dz_right_stick_x'] = 0
+                        result['dz_right_stick_y'] = 0
 
         if msg_type == 0x0C:
             # Collect the next 24 16-bit values after the first 6 bytes.

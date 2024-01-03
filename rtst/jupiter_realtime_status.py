@@ -1,19 +1,15 @@
-from functools import partial
 import os
 import sys
 import tkinter as Tk
-from tkinter.messagebox import showinfo
 import argparse
-from tkinter import Text
 import logging
 from time import sleep
-
-from ui import UIRoot
-from  controller_if import ControllerInterface
+from ui import UIRoot, UIHelp
+from controller_if import ControllerInterface
 from valve_message_handler import ValveMessageHandler
 
-__version__ = "$Revision: #19 $"
-__date__ = "$DateTime: 2022/06/29 11:08:41 $"
+__version__ = "$Revision: #33 $"
+__date__ = "$DateTime: 2023/06/06 11:08:41 $"
 
 color_pallete = [
     "#b3ffe0", # bg
@@ -23,9 +19,7 @@ color_pallete = [
     ]
 
 mouse_kbd_on = False
-controller_debug_mode_state = False
 debug_mode = False
-
 haptic_intensity_idx = 0
 haptic_intenisty = [ 16000, 8000, 1000, 320, 200, 100, 60, 16 ]
 
@@ -93,93 +87,6 @@ def get_current_ep_list():
     '''
     global current_ep, ep_lists
     return ep_lists[current_ep][1]
-
-
-def display_help_dialog():
-    help_txt = \
-'''
-Version:
-  jupiter_realtime_status:
-    %s - %s
-
- LOGGING
-  l\tEnable logging
-  c\tEnable log compression
-
- DISPLAY ACTIVITY TRIGGERING
-  H\tToggle Limit Triggering
-  ^d\tToggle 'Debug' Mode
-  '`'\tToggle Control Lockout
-  '~'\tToggle Threshold Shift 
-
- USB
-   m\tToggle HID Mouse / Kbd messages
-   D\tCycle through trackpad debug modes (Off, L Pad, R Pad)
-
- TRACKPAD
-  u / U \tDecrease / Increase frame rate
-  i\tToggle trackpad clipping
-  $ Turn off Rushmore freq hoppin (sets noise threshold to 0)
-  o / O \tDecrease / increase centroid threshold
-  / / ?\tDecrease / increase hysteresis
-  a\tCalibrate trackpads
-  A\tDisplay trackpad calibration (Not implemented)
-
- RUSHMORE CAPSENSE
-  n / N\t Decrease / increase Rushmore touch threshold
-  o / O\t Decrease / increase Rushmore no touch threshold
-  y / Y\t Decrease / increase Rushmroe noise floor (for centroid)
-  s / S\tDecrease / increase Rushmore noise threshold
-  M\t Dump Rushmore trackpad calibration data
-  ! / @\tDecrease / increase EF index left
-  ^ / %%\tDecrease / increase EF index right
-  $\t Toggle Rushmore frequency hopping
-
- D21 CAPSENSE
-  *\tToggle Frequency Hopping mode
-
- HAPTICS
-  f\tEnable haptics
-  F\tSwitch haptics Left / Right
-  w/W\tDecrease / increase haptic frequency
-  e/E\tIncrement haptics repeat count
-  z/Z\tDecrement / increment duty cycle percent
-  E\tIncrement haptics loop interval
-  L\tStop all haptics
-  0\tStop all haptics
-  &\tChange UI-type haptic intensity
-  [ / ]\tDecrease / increase DAC haptic gain (dB)
-
- IMU
-  g\tIncrement IMU mode
-  G\tRun IMU calibration (Bosch Only)
-
- JOYSTICK
-  j\tThumbstick:  Raw mode toggle
-  J\tThumbstick:  Calibration (3 steps)
-  ^j\tThumbstick: Cancel calibration
-  < / >\tThumbstick touch threshold up / down
-
- TRIGGER
-  t\tTrigger: Raw mode toggle
-  T\tTrigger: Calibration (3 steps)
-  ^t\tTrigger: Cancel calibration
-  k / K\tTrigger:Decrease / increase threshold
- 
- PRESSURE
-  p\tPressure: Raw mode toggle
-  P\tPressure: Calibration (3 steps)
-  ^p\tPressure: Cancel calibration
-
- SYSTEM
-  d\tSelect connected controllers (current limit 2)
-  v\tToggle device type filter
-  r\trestart connection
-  b\treboot connected device
-  B\treboot connected device into bootloader
-  q\tquit
-'''
-    showinfo('Help', help_txt % (__version__, __date__))
 
 ##########################################################################################################
 ## Key stroke Callback
@@ -253,8 +160,9 @@ def key_cb(event):
 # Trackpad Calibration
     elif event.char == 'a':
         if not debug_mode: 
-            logger.info("Not allowed if not in DEBUG mode (^d)");
             return
+
+        logger.info('Calibrating trackpads')
         cntrlr_mgr.capsense_calibrate(0, 0)
         cntrlr_mgr.capsense_calibrate(1, 0)
 
@@ -313,16 +221,16 @@ def key_cb(event):
 
 # Testing
     elif event.char == 'M':       
-       cal =  cntrlr_mgr.rushmore_get_factory_cal(0)
+       cal =  cntrlr_mgr.trackpad_get_factory_cal(0)
        logger.info('Factory Cal' + os.linesep + cntrlr_mgr.rushmore_cal_to_str(cal))
 
-       cal =  cntrlr_mgr.rushmore_get_factory_cal(1)
+       cal =  cntrlr_mgr.trackpad_get_factory_cal(1)
        logger.info('Factory Cal' + os.linesep + cntrlr_mgr.rushmore_cal_to_str(cal))
        
-       cal = cntrlr_mgr.rushmore_get_current_cal(0)
+       cal = cntrlr_mgr.trackpad_get_current_cal(0)
        logger.info('Current Cal' + os.linesep + cntrlr_mgr.rushmore_cal_to_str(cal))
        
-       cal = cntrlr_mgr.rushmore_get_current_cal(1)
+       cal = cntrlr_mgr.trackpad_get_current_cal(1)
        logger.info('Current Cal' + os.linesep + cntrlr_mgr.rushmore_cal_to_str(cal))
 
     elif event.char == '0':
@@ -335,29 +243,23 @@ def key_cb(event):
         cntrlr_mgr.haptic_tick(2, 2, 0)
 
     elif event.char == '3':
-        cntrlr_mgr.haptic_tick(2, 3, 0)
-
-        #global haptic_ri
-        #haptic_ri += 1
-        #if haptic_ri > 16:
-        #    haptic_ri = 4
-        #logger.info("Haptic ri to " + str(haptic_ri))
-
-        #cntrlr_mgr.haptic_noise(1, haptic_ri, -3, 10000)
-    
+        for i in range(8):
+            cntrlr_mgr.haptic_click(2, 2, 0)
+            sleep(0.050)
+   
     elif event.char == '4':
         cntrlr_mgr.haptic_tick(2, 4, 0)
     
     elif event.keycode == 49:
-        cntrlr_mgr.haptic_click(2, 1, 0);
+        cntrlr_mgr.haptic_click(2, 1, 0)
     elif event.keycode == 50:
-        cntrlr_mgr.haptic_click(2, 2, 0);
+        cntrlr_mgr.haptic_click(2, 2, 0)
     elif event.keycode == 51:
-        cntrlr_mgr.haptic_click(2, 3, 0);
+        cntrlr_mgr.haptic_click(2, 3, 0)
     elif event.keycode == 52:
-        cntrlr_mgr.haptic_click(2, 4, 0);
+        cntrlr_mgr.haptic_click(2, 4, 0)
 
-    elif event.char == '5':
+    elif event.char == '5': 
         tone1_len = 250
         cntrlr_mgr.haptic_tone(2, 0, ui_root.haptic_freq, int( tone1_len))        
         logger.info('FREQ: ' + str(ui_root.haptic_freq))
@@ -423,46 +325,36 @@ def key_cb(event):
 
 
     elif event.char == ';':
-#       cntrlr_mgr.set_stick_deadzone(2000)
-#        logger.info(cntrlr_mgr.get_stick_deadzone())
-#       logger.info(cntrlr_mgr.user_data_get())
-        #cntrlr_mgr.haptic_tick(2, 2, 0)
-#        cntrlr_mgr.haptic_enable(1);
-#        cntrlr_mgr.haptic_cmd(0, 2, 2, 0 )
-  
-       logger.info(cntrlr_mgr.imu_get_type())
-       logger.info(cntrlr_mgr.imu_get_cal())
-   #     cntrlr_mgr.trackpad_set_raw_data_mode(0x4)
-#        logger.info(cntrlr_mgr.get_raw_trackpad_data())
-
-
+        cntrlr_mgr.haptic_log_sweep(1, -6, 8000, 50, 2000)
 
     elif event.char == '/':
-        cntrlr_mgr.imu_set_type(0)
+        cntrlr_mgr.imu_set_type(1)
 
     elif event.char == ':':
-        cntrlr_mgr.user_data_set(0x01, 0) # Version 0x01
-        #cntrlr_mgr.haptic_enable(0);
-        #cntrlr_mgr.imu_set_type(1)
-#       cntrlr_mgr.trigger_set_cal( 1, 1234, 587, 0 );
-#       cntrlr_mgr.pressure_set_cal( 1, 199, 1, 1000, 0x00 )
-#        cntrlr_mgr.thumbstick_set_cal( 0, 111, 222, 333, 114, 55, 665, 777, 888 )
-      # cntrlr_mgr.trigger_set_cal( 1, 433, 136, 1 );
+        _, x_center_min, x_center_max, x_full_min, x_full_max, y_center_min, y_center_max, y_full_min, y_full_max = \
+            cntrlr_mgr.thumbstick_get_cal(1)
+        x_center_min -= 100
+        x_center_max -= 100
+
+        cntrlr_mgr.thumbstick_set_cal(1, x_center_min, x_center_max, x_full_min, x_full_max, y_center_min, y_center_max, y_full_min, y_full_max);        
 
     elif event.char == '"':
- #       cntrlr_mgr.persist_cal(0, 0x17)
- #       cntrlr_mgr.persist_cal(1, 0x17)
-#        cntrlr_mgr.persist_cal( 1, 0x04 )  #Persist Pressure
-#       cntrlr_mgr.persist_cal( 0, 0x02 )  #Persist Thumbstick
-#      cntrlr_mgr.persist_cal( 1, 0x01 )  #Persist Trigger
-#       cntrlr_mgr.persist_cal( 1, 0x10 )  #Persist IMU
-       cntrlr_mgr.persist_cal( 1, 0x20 )  #Persist USER
+        if not debug_mode: 
+            logger.info('Need to enable debug mode')
+            return
+#    cntrlr_mgr.persist_cal(1, 0x17)
+#    cntrlr_mgr.persist_cal( 1, 0x04 )  #Persist Pressure
+#    cntrlr_mgr.persist_cal( 0, 0x02 )  #Persist Thumbstick
+#    cntrlr_mgr.persist_cal( 1, 0x01 )  #Persist Trigger
+#    cntrlr_mgr.persist_cal( 1, 0x10 )  #Persist IMU
+#    cntrlr_mgr.persist_cal( 1, 0x20 )  #Persist USER
 
     elif event.char == '\\':
-        cntrlr_mgr.imu_set_cal( 1, 2, 3, 4, 5, 6)
+        cntrlr_mgr.imu_set_type(0)
 
     elif event.char == '{':
-        cntrlr_mgr.user_data_set(0x01, 1)
+        logger.info('IMU mode is: {}'.format(cntrlr_mgr.get_imu_raw_mode()))
+        #cntrlr_mgr.user_data_set(0x01, 1)
 
     elif event.char == '}':
         cntrlr_mgr.user_data_set(0x01, 2)
@@ -512,34 +404,9 @@ def key_cb(event):
             ui_root.rushmore_noise_floor = 300
         cntrlr_mgr.set_setting(63, ui_root.rushmore_noise_floor )
 
-    elif event.char == '!':
-        ui_root.rushmore_l_ef_index = ui_root.rushmore_l_ef_index - 1
-        if ui_root.rushmore_l_ef_index < 0:
-            ui_root.rushmore_l_ef_index = 1
-        cntrlr_mgr.set_setting(72, ui_root.rushmore_l_ef_index)
-    
-    elif event.char == '@':
-        ui_root.rushmore_l_ef_index = ui_root.rushmore_l_ef_index + 1
-        if ui_root.rushmore_l_ef_index > 1:
-            ui_root.rushmore_l_ef_index = 0
-        cntrlr_mgr.set_setting(72, ui_root.rushmore_l_ef_index)
-
-    elif event.char == '^':
-        ui_root.rushmore_r_ef_index = ui_root.rushmore_r_ef_index - 1
-        if ui_root.rushmore_r_ef_index < 0:
-            ui_root.rushmore_r_ef_index = 1
-        cntrlr_mgr.set_setting(73, ui_root.rushmore_r_ef_index)
-    
-    elif event.char == '%':
-        ui_root.rushmore_r_ef_index = ui_root.rushmore_r_ef_index + 1
-        if ui_root.rushmore_r_ef_index > 1:
-            ui_root.rushmore_r_ef_index = 0
-        cntrlr_mgr.set_setting(73, ui_root.rushmore_r_ef_index)
-
     elif event.char == '$':
         ui_root.rushmore_freq_hopping = 1 - ui_root.rushmore_freq_hopping
         cntrlr_mgr.set_setting(69, ui_root.rushmore_freq_hopping)
-
 
 # Trackpad Noise Threshold
     elif event.char == 's':
@@ -553,7 +420,6 @@ def key_cb(event):
         if ui_root.rushmore_noise_threshold > 400:
             ui_root.rushmroe_noise_threshold = 400
         cntrlr_mgr.rushmore_set_noise_threshold(ui_root.rushmore_noise_threshold)
-
     
     elif event.char == '|':
         zoom = ui_root.get_trackpad_zoom()
@@ -574,10 +440,20 @@ def key_cb(event):
     elif event.char == 'G':
         cntrlr_mgr.imu_calibrate()
 
+    elif event.char == 'L':
+        ui_root.imu_raw += 1
+        if ui_root.imu_raw == 3:
+            ui_root.imu_raw = 0
+
+        cntrlr_mgr.set_imu_raw_mode(ui_root.imu_raw)
+    
+    elif event.char == 'R':
+        ui_root.imu_phys_units = 1 - ui_root.imu_phys_units
+
 # Pressure Commands
     elif event.char == 'p':
         ui_root.pressure_raw = 1 - ui_root.pressure_raw
-        cntrlr_mgr.pressure_set_raw(ui_root.pressure_raw)
+        cntrlr_mgr.pressure_set_raw_mode(ui_root.pressure_raw)
 
     elif event.char == 'P':
         if not debug_mode: 
@@ -595,7 +471,7 @@ def key_cb(event):
 # Trigger Commands
     elif event.char == 't':
         ui_root.trigger_raw = 1 - ui_root.trigger_raw
-        cntrlr_mgr.trigger_set_raw(ui_root.trigger_raw)
+        cntrlr_mgr.trigger_set_raw_mode(ui_root.trigger_raw)
 
     elif event.char == 'T':
         if not debug_mode: 
@@ -622,7 +498,7 @@ def key_cb(event):
     elif event.char == 'j':
         ui_root.thumbstick_raw_mode = 1 - ui_root.thumbstick_raw_mode
 
-        cntrlr_mgr.thumbstick_set_raw(ui_root.thumbstick_raw_mode)
+        cntrlr_mgr.thumbstick_set_raw_mode(ui_root.thumbstick_raw_mode)
         if ui_root.thumbstick_raw_mode:
             cntrlr_mgr.set_stick_deadzone(0)
             ui_root.set_thumbstick_zoom(16)
@@ -631,7 +507,6 @@ def key_cb(event):
             cntrlr_mgr.set_stick_deadzone(4000)
             ui_root.set_thumbstick_zoom(1)
             ui_root.set_thumbstick_offset(0)
-
 
     elif event.char == 'J':
         if not debug_mode: 
@@ -648,7 +523,7 @@ def key_cb(event):
 # Debug display mode control
     elif event.char == '_':
         mode = ui_root.debug_display_mode + 1
-        if (mode > 5):
+        if (mode > 6):
             mode = 0
         logger.info('Debug Mode set to: {}'.format(mode))
         ui_root.debug_display_mode = mode
@@ -659,8 +534,15 @@ def key_cb(event):
         cntrlr_mgr.restart()
 
     elif event.char == 'h':
-        display_help_dialog()
+        if ui_help.is_open:
+            ui_help.hide()
+        else:
+            ui_help.show()
 
+    elif event.keycode == 27:
+        if ui_help.is_open:
+            ui_help.hide()
+            
     elif event.char == 'q':
         root.destroy()
 
@@ -735,7 +617,7 @@ def key_cb(event):
         logger.info(cntrlr_mgr.imu_get_full_cal())
 
     else:
-        logger.info('Got keycode: ' + str(event.keycode))
+        logger.info(f'Got unknown key - char: {event.char}     keycode: {event.keycode}')
 
 ##########################################################################################################
 ## BEGIN HELPER METHODS
@@ -766,6 +648,7 @@ def toggle_debug_mode_cb(event):
     debug_mode = 1 - debug_mode
     ui_root.debug_mode = debug_mode
 #    ui_root.toggle_debug_trails()  # useful for trackpad testing, but confusing for users.
+
 ##########################################################################################################
 ## UI
 ##########################################################################################################
@@ -775,11 +658,12 @@ def resize(event):
 def connect_cb(hid_dev_mgr):
     global logger
     global mouse_kbd_on
+
     logger.info("CONNECT")
 
     # set debug usb mode
     cntrlr_mgr.set_setting(6, 0)
-    cntrlr_mgr.set_imu_mode(1)
+    #cntrlr_mgr.set_imu_mode(1)
     cntrlr_mgr.sys_steamwatchdog(0)
 
     # Disable Mouse mode
@@ -796,7 +680,9 @@ def connect_cb(hid_dev_mgr):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--chinese', '-c', action='store_true', default=False)
+parser.add_argument('--tcpip', '-t', action='store_true', default=False)
 args = parser.parse_args()
+
 ##########################################################################################################
 ## LANGUAGE SETUP
 ##########################################################################################################
@@ -804,13 +690,17 @@ if args.chinese:
     language ='chi'
 else:
     language = 'eng'
+##########################################################################################################
+## LANGUAGE SETUP
+##########################################################################################################
+if args.tcpip:
+    from ta2_interface import Ta2InterfaceHost
 
 ##########################################################################################################
 ## LOGGER SETUP
 ##########################################################################################################
 logger=logging.getLogger('RTST')
 logger.setLevel(logging.DEBUG)
-
 log_file_path = os.path.expanduser('~/RTST.log')
 
 # If the file can't be opened (permissions?) then delete it and re-open
@@ -837,11 +727,6 @@ ch.setFormatter(formatter)
 logger.addHandler(fh)
 logger.addHandler(ch)
 
-
-haptic_channel = 0
-tmp_tone = 10
-tmp_delta = 1
-haptic_ri = 4
 ##########################################################################################################
 ## UI SETUP
 ##########################################################################################################
@@ -873,6 +758,19 @@ root.bind('<Control-Key-t>', trigger_cancel_cal_cb)
 root.bind('<Control-Key-d>', toggle_debug_mode_cb)
 
 canvas.pack()
+
+# create help window object (hidden by default)
+ui_help = UIHelp(root, __version__, __date__)
+ui_help.Help.bind("<Key>", key_cb)
+
+# TA2 test automation / interprocess comms interface setup
+if args.tcpip:
+    try:
+        ta2_interface = Ta2InterfaceHost(cntrlr_mgr, key_cb)
+        logger.info(f"Initialized TA2 Interface on port: {ta2_interface.TA2_INTERFACE_PORT}")
+    except:
+        logger.warning('Failed to initialize TA2 Interface')
+
 Tk.mainloop()
 
 logger.info("Exiting")

@@ -1,12 +1,22 @@
-import threading
+import sys
+import os
+#
+# At least Microsoft Store version of Python is pretty limited in
+# where it searches for DLLs when trying to load them, so the most
+# reliable way to make it work is to add the directory this file is in
+# explicitly, since we have hidapi.dll here as well
+#
+if sys.platform == 'win32':
+    os.add_dll_directory(os.path.dirname(os.path.abspath(__file__)))
 import hid
+
+import threading
 import ctypes
 import struct
 import array
 import copy
-import os
-import sys
 import logging
+from time import sleep
 
 __version__ = "$Revision: #21 $"
 __date__ = "$DateTime: 2021/07/30 11:04:00 $"
@@ -63,8 +73,11 @@ class HidDeviceManager:
     def __do_read_thread(self):
         try:
             while self.run_read_thread:
-                self.sample_handler(self.device.read(64))
-        except hid.HIDException as e:
+                try:
+                    self.sample_handler(self.device.read(64))
+                except:
+                    pass
+        except:
             pass
 
     def start_read_thread(self):
@@ -84,12 +97,14 @@ class HidDeviceManager:
         self.thread_lock.release()
 
     def shutdown(self):
-        self.stop_hotplug_thread()
         self.stop_read_thread()
+        self.stop_hotplug_thread()
 
     def restart(self):
         self.logger.info('Restarting device manager')
+        self.device = None
         self.shutdown()
+        sleep(.1)
         self.start_hotplug_thread()
 
     def stop_hotplug_thread(self):
@@ -163,7 +178,7 @@ class HidDeviceManager:
                 except hid.HIDException as e:
                     if e.args[0] != 'unable to open device':
                         raise e
-                        return
+                    return
 
                 self.device_vendor_id = vid
                 self.device_product_id = pid
